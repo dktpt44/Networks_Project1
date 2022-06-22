@@ -10,15 +10,11 @@
 
 int main() {
   // create a socket
-  int network_socket;
-  network_socket = socket(AF_INET, SOCK_STREAM, 0);
-
-  // check for fail error
-  if (network_socket == -1) {
+  int network_socket = socket(AF_INET, SOCK_STREAM, 0);
+  if (network_socket == -1) {  // check for fail error
     printf("socket creation failed..\n");
     exit(EXIT_FAILURE);
   }
-
   // setsock
   int value = 1;
   setsockopt(network_socket, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));  //&(int){1},sizeof(int)
@@ -38,7 +34,6 @@ int main() {
   }
 
   char buffer[256];
-  // client authorization
 
   while (1) {
     printf("ftp> ");
@@ -47,7 +42,7 @@ int main() {
     fgets(buffer, sizeof(buffer), stdin);
     buffer[strcspn(buffer, "\n")] = 0;  // remove trailing newline char from buffer, fgets does not remove it
     if (strcmp(buffer, "exit") == 0) {
-      printf("closing the connection to server \n");
+      printf("Connection to the server closed.\n");
       close(network_socket);
       break;
     }
@@ -61,6 +56,7 @@ int main() {
       recv(network_socket, &response, sizeof(response), 0);
       // print out whether user name exists or not
       printf("%s\n", response);
+      // TODO: Do stuff based on response
     }
 
     bzero(buffer, sizeof(buffer));
