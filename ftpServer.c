@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <dirent.h>
 #include <netinet/in.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -17,6 +18,7 @@ struct ClientStruct {
   int userIndex;
   bool userName;
   bool userPass;
+  int userCurDataPort;
 };
 
 struct acc {  // structure to store username and password
@@ -144,7 +146,7 @@ int main() {
               printf("Error in command.\n");
             }
             */
-            char allCmds[3][5] = {"USER", "PASS", "LIST"};
+            char allCmds[5][5] = {"USER", "PASS", "LIST", "PORT"};
 
             // USER command
             if (strcmp(resCmd, allCmds[0]) == 0) {
@@ -182,8 +184,88 @@ int main() {
             }
 
             // LIST command
-            else if (strcmp(resCmd, allCmds[1]) == 0) {
+            else if (strcmp(resCmd, allCmds[2]) == 0) {
               // Todo: list all the file directories in current active directory
+              int pid = fork();
+              if (pid == 0) {  // child process
+                close(i);
+                // TODO: reset FD set
+                // create a socket
+                int network_socket = socket(AF_INET, SOCK_STREAM, 0);
+
+                // check for fail error
+                if (network_socket == -1) {
+                  printf("socket creation failed..\n");
+                  exit(EXIT_FAILURE);
+                }
+
+                // setsock
+                int value = 1;
+                setsockopt(network_socket, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));  //&(int){1},sizeof(int)
+
+                struct sockaddr_in clientAddrToSendData, thisMachineAddr;
+                bzero(&clientAddrToSendData, sizeof(clientAddrToSendData));
+                clientAddrToSendData.sin_family = AF_INET;
+                clientAddrToSendData.sin_port = htons(listOfConnectedClients[i].userCurDataPort);
+                clientAddrToSendData.sin_addr.s_addr = INADDR_ANY;  // TODO:
+
+                // bind it to port 20
+
+                bzero(&thisMachineAddr, sizeof(thisMachineAddr));
+                thisMachineAddr.sin_family = AF_INET;
+                thisMachineAddr.sin_port = htons(20);
+                thisMachineAddr.sin_addr.s_addr = INADDR_ANY;  // TODO:
+                if (bind(network_socket, (struct sockaddr *)&thisMachineAddr, sizeof(struct sockaddr_in)) == 0) {
+                  printf("binded \n");
+                }
+
+                // connect
+                int connection_status =
+                    connect(network_socket,
+                            (struct sockaddr *)&clientAddrToSendData,
+                            sizeof(clientAddrToSendData));
+                printf("netsock: %d\n", network_socket);
+
+                // check for errors with the connection
+                if (connection_status == -1) {
+                  printf("There was an error making a connection to the remote socket \n\n");
+                  exit(EXIT_FAILURE);
+                } else {
+                  // Todo: maybe this response is automated
+                  char corResponse[] = "150 File status okay; about to open. data connection.";
+                  send(network_socket, corResponse, sizeof(corResponse), 0);
+                  // start sending the list command
+                  struct dirent *drty;
+                  DIR *direct;
+                  direct = opendir(".");
+                  if (direct) {
+                    char buffer2[256];
+                    while ((drty = readdir(direct)) != NULL) {
+                      // dummy read
+
+                      bzero(buffer2, sizeof(buffer2));
+                      recv(network_socket, &buffer2, sizeof(buffer2), 0);  // receive dummy
+
+                      // send
+                      send(network_socket, drty->d_name, sizeof(drty->d_name), 0);
+                    }
+                    closedir(direct);
+                  }
+
+                  close(network_socket);
+                  exit(1);
+                }
+              }
+
+            }
+
+            // PORT command
+            else if (strcmp(resCmd, allCmds[3]) == 0) {
+              // Todo: list all the file directories in current active directory
+              char corResponse[] = "200 PORT command successful.";
+              listOfConnectedClients[i].userCurDataPort = atoi(resDat);
+              send(i, corResponse, sizeof(corResponse), 0);
+
             }
 
             // Wrong command
