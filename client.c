@@ -25,17 +25,19 @@ void recvFile(int i, char *filename)
 {
   int n;
   char buffer[SIZE];
-  FILE *fp = fopen(filename, "w");
+  FILE *fp;
+  fp = fopen(filename, "w");
   while (1)
   {
     n = recv(i, buffer, SIZE, 0);
+    fprintf(fp, "%s", buffer);
+    printf("p2: %s\n", buffer);
+
     if (n <= 0)
     {
       break;
       return;
     }
-
-    fprintf(fp, "%s", buffer);
     bzero(buffer, SIZE);
   }
   fclose(fp);
@@ -199,8 +201,11 @@ int main()
 
             // setsock
             int value = 1;
-            setsockopt(newSocket, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value)); //&(int){1},sizeof(int)
-
+            if (setsockopt(newSocket, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0)
+            {
+              perror("binding faield! \n");
+              return;
+            }
             // define server address structure
             struct sockaddr_in transferAddress;
             bzero(&transferAddress, sizeof(transferAddress));
@@ -231,12 +236,14 @@ int main()
             bzero(buffer2, sizeof(buffer2));
             recv(client_socket, &buffer2, sizeof(buffer2), 0); // receive
 
-            printf("%s\n", buffer2);
+            printf("-point1: %s\n", buffer2);
             // start receiving data
 
             if (strcmp(resCmd, allCmds[0]) == 0)
             // RETR command
             {
+              // char dummy2[] = "ddf";
+              // send(client_socket, dummy2, sizeof(dummy2), 0);
               recvFile(client_socket, resDat);
             }
             else if (strcmp(resCmd, allCmds[1]) == 0)
