@@ -204,7 +204,6 @@ int main()
             if (setsockopt(newSocket, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0)
             {
               perror("binding faield! \n");
-              return;
             }
             // define server address structure
             struct sockaddr_in transferAddress;
