@@ -12,10 +12,37 @@
 
 unsigned short controlPort;
 bool userAuthenticated = false;
+char curWorkingDir[256] = ".";
 
 int getNewPort()
 {
   return controlPort++;
+}
+
+#define SIZE 1024
+
+void recvFile(int i, char *filename)
+{
+  int n;
+  char buffer[SIZE];
+  FILE *fp = fopen(filename, "w");
+  while (1)
+  {
+    n = recv(i, buffer, SIZE, 0);
+    if (n <= 0)
+    {
+      break;
+      return;
+    }
+
+    fprintf(fp, "%s", buffer);
+    bzero(buffer, SIZE);
+  }
+  fclose(fp);
+  recv(i, buffer, SIZE, 0);
+  printf("%s\n", buffer);
+  bzero(buffer, SIZE);
+  return;
 }
 
 int main()
@@ -106,7 +133,7 @@ int main()
         }
       }
 
-      char allCmds[3][5] = {"RETR", "STOR", "LIST"};
+      char allCmds[4][5] = {"RETR", "LIST", "STOR"};
 
       // check if any of the LIST, RETR or STOR commands are input by user
       if ((strcmp(resCmd, allCmds[0]) == 0 || strcmp(resCmd, allCmds[1]) == 0 || strcmp(resCmd, allCmds[2]) == 0) && userAuthenticated)
@@ -207,16 +234,29 @@ int main()
             printf("%s\n", buffer2);
             // start receiving data
 
-            char dummy[] = "dummy";
-
-            int endWhile = 1;
-
-            while (endWhile != 0)
+            if (strcmp(resCmd, allCmds[0]) == 0)
+            // RETR command
             {
-              send(client_socket, dummy, sizeof(dummy), 0); // send
-              bzero(buffer2, sizeof(buffer2));
-              endWhile = recv(client_socket, &buffer2, sizeof(buffer2), 0);
-              printf("%s\n", buffer2);
+              recvFile(client_socket, resDat);
+            }
+            else if (strcmp(resCmd, allCmds[1]) == 0)
+            // List command
+            {
+              char dummy[] = "dummy";
+
+              int endWhile = 1;
+
+              while (endWhile != 0)
+              {
+                send(client_socket, dummy, sizeof(dummy), 0); // send
+                bzero(buffer2, sizeof(buffer2));
+                endWhile = recv(client_socket, &buffer2, sizeof(buffer2), 0);
+                printf("%s\n", buffer2);
+              }
+            }
+            else if (strcmp(resCmd, allCmds[2]) == 0)
+            // STOR command
+            {
             }
 
             close(client_socket);

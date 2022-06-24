@@ -12,14 +12,16 @@
 
 #define PORT 9007
 #define USERMAX 1024
+#define SIZE 1024
 
 // list of connected clients
 struct ClientStruct
 {
   int userIndex;
+  int userCurDataPort;
   bool userName;
   bool userPass;
-  int userCurDataPort;
+  char currDir[256];
 };
 
 struct acc
@@ -31,6 +33,27 @@ struct acc
 struct ClientStruct listOfConnectedClients[FD_SETSIZE];
 // first char = username correct?
 // second char = password correct?
+
+void sFile(FILE *fp, int i)
+{
+  int n;
+  char data[SIZE] = {0};
+
+  while (fgets(data, SIZE, fp) != NULL)
+  {
+    printf("%s\n", data);
+    if (send(i, data, sizeof(data), 0) == -1)
+    {
+      perror("[-]Error in sending file.");
+      exit(1);
+    }
+    bzero(data, SIZE);
+  }
+
+  fclose(fp);
+  char complete[] = "226 Transfer completed.";
+  send(i, complete, sizeof(complete), 0);
+}
 
 int main()
 {
@@ -116,6 +139,7 @@ int main()
           printf("New connection at: %d\n", client_sd);
           listOfConnectedClients[client_sd].userName = false;
           listOfConnectedClients[client_sd].userPass = false;
+          strcpy(listOfConnectedClients[client_sd].currDir, ".");
         }
         // 2nd case: read data
         else
@@ -171,7 +195,7 @@ int main()
               printf("Error in command.\n");
             }
             */
-            char allCmds[5][5] = {"USER", "PASS", "LIST", "PORT"};
+            char allCmds[5][5] = {"USER", "PASS", "LIST", "PORT", "RETR"};
 
             // USER command
             if (strcmp(resCmd, allCmds[0]) == 0)
@@ -228,7 +252,7 @@ int main()
               memset(resDat, 0, strlen(resDat));
             }
             // LIST command
-            else if (strcmp(resCmd, allCmds[2]) == 0)
+            else if (strcmp(resCmd, allCmds[2]) == 0 || strcmp(resCmd, allCmds[4]) == 0)
             {
               // Todo: list all the file directories in current active directory
               int pid = fork();
@@ -285,26 +309,71 @@ int main()
                   // Todo: maybe this response is automated
                   char corResponse[] = "150 File status okay; about to open. data connection.";
                   send(network_socket, corResponse, sizeof(corResponse), 0);
-                  // start sending the list command
-                  struct dirent *drty;
-                  DIR *direct;
-                  direct = opendir(".");
-                  if (direct)
+
+                  // LIST command
+                  if (strcmp(resCmd, allCmds[2]) == 0)
                   {
-                    char buffer2[256];
-                    while ((drty = readdir(direct)) != NULL)
+                    struct dirent *drty;
+                    DIR *direct;
+                    direct = opendir(".");
+                    if (direct)
                     {
-                      // dummy read
+                      char buffer2[256];
+                      while ((drty = readdir(direct)) != NULL)
+                      {
+                        // dummy read
 
-                      bzero(buffer2, sizeof(buffer2));
-                      recv(network_socket, &buffer2, sizeof(buffer2), 0); // receive dummy
+                        bzero(buffer2, sizeof(buffer2));
+                        recv(network_socket, &buffer2, sizeof(buffer2), 0); // receive dummy
 
-                      // send
-                      send(network_socket, drty->d_name, sizeof(drty->d_name), 0);
+                        // send
+                        send(network_socket, drty->d_name, sizeof(drty->d_name), 0);
+                      }
+                      closedir(direct);
                     }
-                    closedir(direct);
                   }
+                  // RETR command
+                  else if (strcmp(resCmd, allCmds[4]) == 0)
+                  {
+                    // char dum[256];
+                    //  recv(network_socket, &dum, sizeof(dum), 0);
+                    char filename[256];
+                    int i2 = 0;
+                    int j2 = 0;
+                    while (listOfConnectedClients[i].currDir[i2] != '\0')
+                    {
+                      filename[j2] = listOfConnectedClients[i].currDir[i2];
+                      i2++;
+                      j2++;
+                    }
+                    filename[j2] = '/';
+                    j2++;
+                    i2 = 0;
+                    while (resDat[i2] != '\0')
+                    {
+                      filename[j2] = resDat[i2];
+                      i2++;
+                      j2++;
+                    }
+                    filename[j2] = '\0';
+                    // send the file
+                    //  text file
+                    // TODO: check
 
+                    FILE *txtile = fopen(filename, "r");
+                    if (txtile != 0)
+                    {
+                      printf("open");
+                      sFile(txtile, network_socket);
+                    }
+                    else
+                    {
+                      char errormsg[] = "550 No such file or directory";
+                      send(network_socket, errormsg, strlen(errormsg), 0);
+                    }
+                    // binary file
+                  }
+                  // start sending the list command
                   close(network_socket);
                   exit(1);
                 }
