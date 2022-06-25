@@ -110,6 +110,11 @@ void sepCmdDat(char *buff, char *cmdstr, char *datstr) {
 
 // USER command, i = socket
 void ftpUserCmd(int i, char *resDat) {
+  /*
+if (resDat[0] == '\0') {
+  printf("Error in command.\n");
+}
+*/
   bool foundDat = false;
   for (int n = 0; n < userCount; n++) {
     if (strcmp(resDat, accFile[n].user) == 0) {
@@ -202,8 +207,10 @@ void sFile(FILE *fp, int i) {
   }
 
   fclose(fp);
+  /*
   char complete[] = "226 Transfer completed.";
   send(i, complete, sizeof(complete), 0);
+  */
 }
 
 // main function
@@ -262,11 +269,6 @@ int main() {
             char resDat[256];
             sepCmdDat(buffer, resCmd, resDat);
 
-            /*
-            if (resDat[0] == '\0') {
-              printf("Error in command.\n");
-            }
-            */
             char allCmds[6][5] = {"USER", "PASS", "PORT", "LIST", "RETR", "STOR"};
 
             // USER command
@@ -277,12 +279,14 @@ int main() {
             else if (strcmp(resCmd, allCmds[1]) == 0)
               ftpPassCmd(i, resDat);
 
+            // CHECK if authetiated or not
             else if (!listOfConnectedClients[i].userPass || !listOfConnectedClients[i].userName) {
-              char corResponse[] = "530";
+              char corResponse[] = "530 not authenticated.";
               send(i, corResponse, sizeof(corResponse), 0);
               memset(resCmd, 0, strlen(resCmd));
               memset(resDat, 0, strlen(resDat));
             }
+
             // PORT command
             else if (strcmp(resCmd, allCmds[2]) == 0) {
               // Todo: list all the file directories in current active directory
@@ -326,8 +330,8 @@ int main() {
 
                   // RETR command
                   else if (strcmp(resCmd, allCmds[4]) == 0) {
-                    // char dum[256];
-                    //  recv(network_socket, &dum, sizeof(dum), 0);
+                    char dum[256];
+                    recv(newDataSock, &dum, sizeof(dum), 0);
                     char filename[256];
                     int i2 = 0;
                     int j2 = 0;
@@ -353,6 +357,7 @@ int main() {
                     if (txtile != 0) {
                       printf("File opened.\n");
                       sFile(txtile, newDataSock);
+                      printf("File send complete.\n");
                     } else {
                       char errormsg[] = "550 No such file or directory";
                       send(newDataSock, errormsg, strlen(errormsg), 0);
