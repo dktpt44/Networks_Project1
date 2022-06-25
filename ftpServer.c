@@ -14,9 +14,8 @@
 #define USERMAX 1024
 #define SIZE 1024
 
-// list of connected clients
-struct ClientStruct
-{
+// structure for the connected client data
+struct ClientStruct {
   int userIndex;
   int userCurDataPort;
   bool userName;
@@ -24,26 +23,178 @@ struct ClientStruct
   char currDir[256];
 };
 
-struct acc
-{ // structure to store username and password
+// structure to store username and password
+struct acc {
   char user[256];
   char pw[256];
 };
 
+// variable to store list of connected clients(FD_SETSIZE = max number of client connections allowed at one time)
 struct ClientStruct listOfConnectedClients[FD_SETSIZE];
-// first char = username correct?
-// second char = password correct?
+// variable to store accepted user accounts
+static struct acc accFile[USERMAX];
+// variable to hold the number of users read from file
+int userCount = 0;
 
-void sFile(FILE *fp, int i)
-{
+// function to read users from file
+void loadUserFile() {
+  FILE *userFile = fopen("user.txt", "r");
+  int strCount = 0;
+  char str;
+  while (!feof(userFile)) {
+    str = fgetc(userFile);
+    if (str == '\n') {
+      userCount += 1;
+    }
+  }
+  rewind(userFile);
+  while (strCount < userCount + 1) {
+    fscanf(userFile, "%s %s", accFile[strCount].user, accFile[strCount].pw);
+    strCount += 1;
+  }
+}
+
+// function to intiate TCP listen
+int initiateTcp() {
+  int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+  if (serverSocket < 0) {  // check for fail error
+    perror("socket:");
+    exit(EXIT_FAILURE);
+  }
+  int value = 1;
+  setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));  //&(int){1},sizeof(int)
+
+  struct sockaddr_in servAddr;  // define server address structure
+  bzero(&servAddr, sizeof(servAddr));
+  servAddr.sin_family = AF_INET;
+  servAddr.sin_port = htons(PORT);
+  servAddr.sin_addr.s_addr = INADDR_ANY;
+  if (bind(serverSocket, (struct sockaddr *)&servAddr, sizeof(servAddr)) < 0) {  // bind
+    perror("bind failed");
+    exit(EXIT_FAILURE);
+  }
+
+  if (listen(serverSocket, 5) < 0) {  // listen
+    perror("listen failed");
+    close(serverSocket);
+    exit(EXIT_FAILURE);
+  } else {
+    printf("Server is listening at port: %d, ip:(%s)\n", ntohs(servAddr.sin_port), inet_ntoa(servAddr.sin_addr));
+  }
+  return serverSocket;
+}
+
+// function to break a string to two strings
+void sepCmdDat(char *buff, char *cmdstr, char *datstr) {
+  int responseSize = strlen(buff), strindx = 0;
+  bool secondStr = false;
+  // break into command and data
+
+  for (int j = 0; j <= responseSize; j++) {
+    if (buff[j] == ' ') {
+      // command string e.g. "USER", "PASS", "STOR", etc.
+      secondStr = true;
+      cmdstr[strindx] = '\0';
+      strindx = 0;
+    } else {
+      // data string (if any)
+      if (!secondStr) {
+        cmdstr[strindx] = buff[j];
+      } else {
+        datstr[strindx] = buff[j];
+      }
+      strindx++;
+    }
+  }
+}
+
+// USER command, i = socket
+void ftpUserCmd(int i, char *resDat) {
+  bool foundDat = false;
+  for (int n = 0; n < userCount; n++) {
+    if (strcmp(resDat, accFile[n].user) == 0) {
+      foundDat = true;
+      listOfConnectedClients[i].userIndex = n;  // found at nth pos in array
+      listOfConnectedClients[i].userName = true;
+      char corResponse[] = "331 Username OK, need password.";
+      send(i, corResponse, sizeof(corResponse), 0);
+      break;
+    }
+  }
+  if (!foundDat) {
+    char corResponse[] = "530 Not logged in.";
+    send(i, corResponse, sizeof(corResponse), 0);
+  }
+}
+
+// PASS command, i = socket
+void ftpPassCmd(int i, char *resDat) {
+  if (!listOfConnectedClients[i].userName) {
+    char corResponse[] = "530 Not logged in.";
+    send(i, corResponse, sizeof(corResponse), 0);
+  } else {
+    if (strcmp(resDat, accFile[listOfConnectedClients[i].userIndex].pw) == 0) {
+      char corResponse[] = "230 User logged in, proceed.";
+      listOfConnectedClients[i].userPass = true;
+      send(i, corResponse, sizeof(corResponse), 0);
+    } else {
+      char corResponse[] = "530 Not logged in.";
+      send(i, corResponse, sizeof(corResponse), 0);
+    }
+  }
+}
+
+// LIST command
+void ftpListCmd(int i) {
+  struct dirent *drty;
+  DIR *direct;
+  direct = opendir(".");
+  if (direct) {
+    char buffer2[256];
+    while ((drty = readdir(direct)) != NULL) {
+      // dummy read
+
+      bzero(buffer2, sizeof(buffer2));
+      recv(i, &buffer2, sizeof(buffer2), 0);  // receive dummy
+
+      // send
+      send(i, drty->d_name, sizeof(drty->d_name), 0);
+    }
+    closedir(direct);
+  }
+}
+
+// function to initiate second TCP channel, i = current socket
+int initiateDataChannel() {
+  int newDataSock = socket(AF_INET, SOCK_STREAM, 0);
+  if (newDataSock == -1) {
+    printf("socket creation failed..\n");
+    exit(EXIT_FAILURE);
+  }
+  int value = 1;
+  setsockopt(newDataSock, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
+
+  struct sockaddr_in thisMachineAddr;
+
+  // bind it to port 20
+  bzero(&thisMachineAddr, sizeof(thisMachineAddr));
+  thisMachineAddr.sin_family = AF_INET;
+  thisMachineAddr.sin_port = htons(20);
+  thisMachineAddr.sin_addr.s_addr = INADDR_ANY;  // TODO:
+  if (bind(newDataSock, (struct sockaddr *)&thisMachineAddr, sizeof(struct sockaddr_in)) == 0) {
+    printf("binded \n");
+  }
+  return newDataSock;
+}
+
+// function to send file over socket i
+void sFile(FILE *fp, int i) {
   int n;
   char data[SIZE] = {0};
 
-  while (fgets(data, SIZE, fp) != NULL)
-  {
+  while (fgets(data, SIZE, fp) != NULL) {
     printf("%s\n", data);
-    if (send(i, data, sizeof(data), 0) == -1)
-    {
+    if (send(i, data, sizeof(data), 0) == -1) {
       perror("[-]Error in sending file.");
       exit(1);
     }
@@ -55,293 +206,132 @@ void sFile(FILE *fp, int i)
   send(i, complete, sizeof(complete), 0);
 }
 
-int main()
-{
+// main function
+int main() {
   // reading from the file
-  static struct acc accFile[USERMAX];
-  FILE *userFile = fopen("user.txt", "r");
-  int userCount = 0; // holds the number of users read from file
-  int strCount = 0;
-  char str;
-  while (!feof(userFile))
-  {
-    str = fgetc(userFile);
-    if (str == '\n')
-    {
-      userCount += 1;
-    }
-  }
-  rewind(userFile);
-  while (strCount < userCount + 1)
-  {
-    fscanf(userFile, "%s %s", accFile[strCount].user, accFile[strCount].pw);
-    strCount += 1;
-  }
+  loadUserFile();
+  int serverSocket = initiateTcp();
 
-  // for initial TCP connection
-  int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-  if (serverSocket < 0)
-  { // check for fail error
-    perror("socket:");
-    exit(EXIT_FAILURE);
-  }
-  int value = 1;
-  setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value)); //&(int){1},sizeof(int)
+  fd_set masterSet;
+  FD_ZERO(&masterSet);               // zero out/iniitalize our set of all sockets
+  FD_SET(serverSocket, &masterSet);  // adds  current socket to the fd set
 
-  struct sockaddr_in server_address; // define server address structure
-  bzero(&server_address, sizeof(server_address));
-  server_address.sin_family = AF_INET;
-  server_address.sin_port = htons(PORT);
-  server_address.sin_addr.s_addr = INADDR_ANY;
-  if (bind(serverSocket, (struct sockaddr *)&server_address, sizeof(server_address)) < 0)
-  { // bind
-    perror("bind failed");
-    exit(EXIT_FAILURE);
-  }
-
-  if (listen(serverSocket, 5) < 0)
-  { // listen
-    perror("listen failed");
-    close(serverSocket);
-    exit(EXIT_FAILURE);
-  }
-  else
-  {
-    printf("Server is listening.\n");
-  }
-
-  fd_set masterSet;                 // DECLARE fd set (file descriptor sets : a collection of file descriptors)
-  FD_ZERO(&masterSet);              // zero out/iniitalize our set of all sockets
-  FD_SET(serverSocket, &masterSet); // adds one socket (the current socket) to the fd set of all sockets
-
-  while (true)
-  {
-    fd_set copySet = masterSet; // select() is destructive: it's going to change the set we pass in, so we need a temporary copy
-    // The maximum number of sockets supported by select() has an upper limit, represented by FD_SETSIZE (typically 1024).
-    if (select(FD_SETSIZE, &copySet, NULL, NULL, NULL) < 0)
-    {
+  while (true) {
+    fd_set copySet = masterSet;  // making a temporary copy
+    // The max no. of sockets supported by select() = FD_SETSIZE (typically 1024).
+    if (select(FD_SETSIZE, &copySet, NULL, NULL, NULL) < 0) {
       perror("select error");
       exit(EXIT_FAILURE);
     }
 
-    // select returns the fd_set containing JUST the file descriptors ready for reading
-    // to know which ones are ready, we have to loop through and check go from 0 to FD_SETSIZE
-    for (int i = 0; i < FD_SETSIZE; i++)
-    {
+    // looping through fdset to check which ones are ready for reading
+    for (int i = 0; i < FD_SETSIZE; i++) {
       // check to see if that fd is SET -> if set, there is data to read
-      if (FD_ISSET(i, &copySet))
-      {
+      if (FD_ISSET(i, &copySet)) {
         // 1st case: NEW CONNECTION
-        if (i == serverSocket)
-        {
-          int client_sd = accept(serverSocket, 0, 0); // accept new connection
-          FD_SET(client_sd, &masterSet);
-          printf("New connection at: %d\n", client_sd);
-          listOfConnectedClients[client_sd].userName = false;
-          listOfConnectedClients[client_sd].userPass = false;
-          strcpy(listOfConnectedClients[client_sd].currDir, ".");
+        if (i == serverSocket) {
+          struct sockaddr_in clientAddrs;
+          socklen_t addr_size;
+          // accept new connection
+          int newClientSock = accept(serverSocket, (struct sockaddr *)&clientAddrs, &addr_size);
+          FD_SET(newClientSock, &masterSet);
+          printf("-New connection at socket: %d, ip: %s, port: %d\n", newClientSock, inet_ntoa(clientAddrs.sin_addr), ntohs(clientAddrs.sin_port));
+          listOfConnectedClients[newClientSock].userName = false;
+          listOfConnectedClients[newClientSock].userPass = false;
+          strcpy(listOfConnectedClients[newClientSock].currDir, ".");
         }
         // 2nd case: read data
-        else
-        {
+        else {
           char buffer[256];
           bzero(buffer, sizeof(buffer));
-          int bytes = recv(i, buffer, sizeof(buffer), 0); // receive
-          printf("Message at: %d: %s\n", i, buffer);
-          if (bytes == 0) // client has closed the connection
-          {
-            printf("Connection closed from client: %d. \n", i);
-            close(i);              // we are done, close fd
-            FD_CLR(i, &masterSet); // remove the socket from the list of file descriptors that we are watching
+          int bytes = recv(i, buffer, sizeof(buffer), 0);  // receive
+          printf("Message at: %d> %s\n", i, buffer);
+          // case1: client has closed the connection
+          if (bytes == 0) {
+            printf("-Connection closed from client socket: %d. \n", i);
+            close(i);               // we are done, close fd
+            FD_CLR(i, &masterSet);  // remove the socket from the fd set
             // reset
             listOfConnectedClients[i].userName = false;
             listOfConnectedClients[i].userPass = false;
-          }
-          else
-          {
-            // TODO: stuff
 
-            int responseSize = strlen(buffer), strindx = 0;
-            bool secondStr = false;
-            // break into command and data
+          }
+          // case2: received some data from client
+          else {
             char resCmd[256];
             char resDat[256];
-            for (int j = 0; j <= responseSize; j++)
-            {
-              if (buffer[j] == ' ')
-              {
-                // command string e.g. "USER", "PASS", "STOR", etc.
-                secondStr = true;
-                resCmd[strindx] = '\0';
-                strindx = 0;
-              }
-              else
-              {
-                // data string (if any)
-                if (!secondStr)
-                {
-                  resCmd[strindx] = buffer[j];
-                }
-                else
-                {
-                  resDat[strindx] = buffer[j];
-                }
-                strindx++;
-              }
-            }
+            sepCmdDat(buffer, resCmd, resDat);
 
             /*
-            if (resCmd[0] == '\0' || resDat[0] == '\0') {
+            if (resDat[0] == '\0') {
               printf("Error in command.\n");
             }
             */
-            char allCmds[5][5] = {"USER", "PASS", "LIST", "PORT", "RETR"};
+            char allCmds[6][5] = {"USER", "PASS", "PORT", "LIST", "RETR", "STOR"};
 
             // USER command
             if (strcmp(resCmd, allCmds[0]) == 0)
-            {
-              bool foundDat = false;
-              for (int n = 0; n < userCount; n++)
-              {
-                if (strcmp(resDat, accFile[n].user) == 0)
-                {
-                  foundDat = true;
-                  listOfConnectedClients[i].userIndex = n; // found at nth pos in array
-                  listOfConnectedClients[i].userName = true;
-                  char corResponse[] = "331 Username OK, need password.";
-                  send(i, corResponse, sizeof(corResponse), 0);
-                  break;
-                }
-              }
-              if (!foundDat)
-              {
-                char corResponse[] = "530 Not logged in.";
-                send(i, corResponse, sizeof(corResponse), 0);
-              }
-            }
+              ftpUserCmd(i, resDat);
 
             // PASS command
             else if (strcmp(resCmd, allCmds[1]) == 0)
-            {
-              if (!listOfConnectedClients[i].userName)
-              {
-                char corResponse[] = "530 Not logged in.";
-                send(i, corResponse, sizeof(corResponse), 0);
-              }
-              else
-              {
-                if (strcmp(resDat, accFile[listOfConnectedClients[i].userIndex].pw) == 0)
-                {
-                  char corResponse[] = "230 User logged in, proceed.";
-                  listOfConnectedClients[i].userPass = true;
-                  send(i, corResponse, sizeof(corResponse), 0);
-                }
-                else
-                {
-                  char corResponse[] = "530 Not logged in.";
-                  send(i, corResponse, sizeof(corResponse), 0);
-                }
-              }
-            }
+              ftpPassCmd(i, resDat);
 
-            else if (!listOfConnectedClients[i].userPass || !listOfConnectedClients[i].userName)
-            {
+            else if (!listOfConnectedClients[i].userPass || !listOfConnectedClients[i].userName) {
               char corResponse[] = "530";
               send(i, corResponse, sizeof(corResponse), 0);
               memset(resCmd, 0, strlen(resCmd));
               memset(resDat, 0, strlen(resDat));
             }
-            // LIST command
-            else if (strcmp(resCmd, allCmds[2]) == 0 || strcmp(resCmd, allCmds[4]) == 0)
-            {
+            // PORT command
+            else if (strcmp(resCmd, allCmds[2]) == 0) {
               // Todo: list all the file directories in current active directory
+              char corResponse[] = "200 PORT command successful.";
+              listOfConnectedClients[i].userCurDataPort = atoi(resDat);
+              send(i, corResponse, sizeof(corResponse), 0);
+            }
+
+            // LIST, RETR, STOR = fork a new process
+            else if (strcmp(resCmd, allCmds[3]) == 0 || strcmp(resCmd, allCmds[4]) == 0) {
               int pid = fork();
-              if (pid == 0)
-              { // child process
+              // child process
+              if (pid == 0) {
                 close(i);
-                // TODO: reset FD set
-                // create a socket
-                int network_socket = socket(AF_INET, SOCK_STREAM, 0);
+                // TODO: do we need to reset FD set? Ask Shan.
 
-                // check for fail error
-                if (network_socket == -1)
-                {
-                  printf("socket creation failed..\n");
-                  exit(EXIT_FAILURE);
-                }
+                int newDataSock = initiateDataChannel(i);
+                struct sockaddr_in clientAddrToSendData;
 
-                // setsock
-                int value = 1;
-                setsockopt(network_socket, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value)); //&(int){1},sizeof(int)
-
-                struct sockaddr_in clientAddrToSendData, thisMachineAddr;
                 bzero(&clientAddrToSendData, sizeof(clientAddrToSendData));
                 clientAddrToSendData.sin_family = AF_INET;
                 clientAddrToSendData.sin_port = htons(listOfConnectedClients[i].userCurDataPort);
-                clientAddrToSendData.sin_addr.s_addr = INADDR_ANY; // TODO:
-
-                // bind it to port 20
-
-                bzero(&thisMachineAddr, sizeof(thisMachineAddr));
-                thisMachineAddr.sin_family = AF_INET;
-                thisMachineAddr.sin_port = htons(20);
-                thisMachineAddr.sin_addr.s_addr = INADDR_ANY; // TODO:
-                if (bind(network_socket, (struct sockaddr *)&thisMachineAddr, sizeof(struct sockaddr_in)) == 0)
-                {
-                  printf("binded \n");
-                }
-
+                clientAddrToSendData.sin_addr.s_addr = INADDR_ANY;
                 // connect
-                int connection_status =
-                    connect(network_socket,
-                            (struct sockaddr *)&clientAddrToSendData,
-                            sizeof(clientAddrToSendData));
-                printf("netsock: %d\n", network_socket);
+
+                int connection_status = connect(newDataSock, (struct sockaddr *)&clientAddrToSendData, sizeof(clientAddrToSendData));
+                printf("New data sock: %d\n", newDataSock);
 
                 // check for errors with the connection
-                if (connection_status == -1)
-                {
+                if (connection_status == -1) {
                   printf("There was an error making a connection to the remote socket \n\n");
                   exit(EXIT_FAILURE);
-                }
-                else
-                {
+                } else {
                   // Todo: maybe this response is automated
                   char corResponse[] = "150 File status okay; about to open. data connection.";
-                  send(network_socket, corResponse, sizeof(corResponse), 0);
+                  send(newDataSock, corResponse, sizeof(corResponse), 0);
 
                   // LIST command
-                  if (strcmp(resCmd, allCmds[2]) == 0)
-                  {
-                    struct dirent *drty;
-                    DIR *direct;
-                    direct = opendir(".");
-                    if (direct)
-                    {
-                      char buffer2[256];
-                      while ((drty = readdir(direct)) != NULL)
-                      {
-                        // dummy read
+                  if (strcmp(resCmd, allCmds[3]) == 0)
+                    ftpListCmd(newDataSock);
 
-                        bzero(buffer2, sizeof(buffer2));
-                        recv(network_socket, &buffer2, sizeof(buffer2), 0); // receive dummy
-
-                        // send
-                        send(network_socket, drty->d_name, sizeof(drty->d_name), 0);
-                      }
-                      closedir(direct);
-                    }
-                  }
                   // RETR command
-                  else if (strcmp(resCmd, allCmds[4]) == 0)
-                  {
+                  else if (strcmp(resCmd, allCmds[4]) == 0) {
                     // char dum[256];
                     //  recv(network_socket, &dum, sizeof(dum), 0);
                     char filename[256];
                     int i2 = 0;
                     int j2 = 0;
-                    while (listOfConnectedClients[i].currDir[i2] != '\0')
-                    {
+                    while (listOfConnectedClients[i].currDir[i2] != '\0') {
                       filename[j2] = listOfConnectedClients[i].currDir[i2];
                       i2++;
                       j2++;
@@ -349,8 +339,7 @@ int main()
                     filename[j2] = '/';
                     j2++;
                     i2 = 0;
-                    while (resDat[i2] != '\0')
-                    {
+                    while (resDat[i2] != '\0') {
                       filename[j2] = resDat[i2];
                       i2++;
                       j2++;
@@ -361,37 +350,24 @@ int main()
                     // TODO: check
 
                     FILE *txtile = fopen(filename, "r");
-                    if (txtile != 0)
-                    {
-                      printf("open");
-                      sFile(txtile, network_socket);
-                    }
-                    else
-                    {
+                    if (txtile != 0) {
+                      printf("File opened.\n");
+                      sFile(txtile, newDataSock);
+                    } else {
                       char errormsg[] = "550 No such file or directory";
-                      send(network_socket, errormsg, strlen(errormsg), 0);
+                      send(newDataSock, errormsg, strlen(errormsg), 0);
                     }
                     // binary file
                   }
                   // start sending the list command
-                  close(network_socket);
+                  close(newDataSock);
                   exit(1);
                 }
               }
             }
 
-            // PORT command
-            else if (strcmp(resCmd, allCmds[3]) == 0)
-            {
-              // Todo: list all the file directories in current active directory
-              char corResponse[] = "200 PORT command successful.";
-              listOfConnectedClients[i].userCurDataPort = atoi(resDat);
-              send(i, corResponse, sizeof(corResponse), 0);
-            }
-
             // Wrong command
-            else
-            {
+            else {
               char corResponse[] = "202 Command not implemented.";
               send(i, corResponse, sizeof(corResponse), 0);
             }
