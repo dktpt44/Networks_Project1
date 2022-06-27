@@ -13,6 +13,7 @@
 #define PORT 9007
 #define USERMAX 1024
 #define SIZE 1024
+#define BUFFERSIZE 256
 
 // structure for the connected client data
 struct ClientStruct {
@@ -215,6 +216,9 @@ void sFile(FILE *fp, int i) {
 
 // main function
 int main() {
+  //intiial server directory
+  char initDir[BUFFERSIZE];
+  getcwd(initDir, BUFFERSIZE);
   // reading from the file
   loadUserFile();
   int serverSocket = initiateTcp();
@@ -245,7 +249,7 @@ int main() {
           printf("-New connection at socket: %d, ip: %s, port: %d\n", newClientSock, inet_ntoa(clientAddrs.sin_addr), ntohs(clientAddrs.sin_port));
           listOfConnectedClients[newClientSock].userName = false;
           listOfConnectedClients[newClientSock].userPass = false;
-          strcpy(listOfConnectedClients[newClientSock].currDir, ".");
+          strcpy(listOfConnectedClients[newClientSock].currDir, initDir);
         }
         // 2nd case: read data
         else {
@@ -269,7 +273,7 @@ int main() {
             char resDat[256];
             sepCmdDat(buffer, resCmd, resDat);
 
-            char allCmds[6][5] = {"USER", "PASS", "PORT", "LIST", "RETR", "STOR"};
+            char allCmds[7][5] = {"USER", "PASS", "PORT", "LIST", "RETR", "STOR", "PWD"};
 
             // USER command
             if (strcmp(resCmd, allCmds[0]) == 0)
@@ -303,7 +307,7 @@ int main() {
                 close(i);
                 // TODO: do we need to reset FD set? Ask Shan.
 
-                int newDataSock = initiateDataChannel(i);
+                int newDataSock = initiateDataChannel();
                 struct sockaddr_in clientAddrToSendData;
 
                 bzero(&clientAddrToSendData, sizeof(clientAddrToSendData));
@@ -371,6 +375,24 @@ int main() {
               }
             }
 
+            else if(strcmp(resCmd, allCmds[6]) == 0){
+              char succMsg[] = "257 pathname ";
+              char returnMsg[BUFFERSIZE];
+              int j2=0;
+              int i2=0;
+              while(succMsg[j2] != '\0'){
+                returnMsg[i2] = succMsg[j2];
+                i2++;
+                j2++;
+              }
+              j2=0;
+              while(listOfConnectedClients[i].currDir[j2] != '\0'){
+                returnMsg[i2] = listOfConnectedClients[i].currDir[j2];
+                i2++;
+                j2++;
+              }
+              send(i, returnMsg, sizeof(returnMsg), 0);
+            }
             // Wrong command
             else {
               char corResponse[] = "202 Command not implemented.";
