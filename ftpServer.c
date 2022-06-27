@@ -21,6 +21,7 @@ struct ClientStruct {
   bool userName;
   bool userPass;
   char currDir[256];
+  char *clientIPAddr;
 };
 
 // structure to store username and password
@@ -169,7 +170,56 @@ void ftpListCmd(int i) {
   }
 }
 
-// function to initiate second TCP channel, i = current socket
+// function to parse port command and ip address
+void ftpPortCmd(int i, char *resDat) {
+  int ix = 0, p1x = 0, p2x = 0;
+  int commaindx = 0;
+  char ipAdr[256];
+  char p1[256];
+  char p2[256];
+
+  int ipIndx = 0;
+  // parse port and ip
+  while (resDat[ix] != '\0') {
+    if (resDat[ix] == ',') {
+      // add . instead of ,
+      commaindx++;
+      if (commaindx < 4) {
+        ipAdr[ipIndx] = '.';
+      }
+      ipIndx++;
+
+    } else if (commaindx < 4) {
+      // extract ip
+      ipAdr[ipIndx] = resDat[ix];
+      ipIndx++;
+    } else if (commaindx == 4) {
+      // extract p1 info
+      ipAdr[ipIndx] = '\0';
+      p1[p1x] = resDat[ix];
+      p1x++;
+    } else if (commaindx == 5) {
+      // extract p2 info
+      p1[p1x] = '\0';
+      p2[p2x] = resDat[ix];
+      p2x++;
+    }
+    ix++;
+  }
+  p2[p2x] = '\0';
+  int p1i, p2i;
+  sscanf(p1, "%d", &p1i);
+  sscanf(p2, "%d", &p2i);
+
+  listOfConnectedClients[i].userCurDataPort = p1i * 256 + p2i;
+  listOfConnectedClients[i].clientIPAddr = ipAdr;
+
+  // do stuff
+  char corResponse[] = "200 PORT command successful.";
+  send(i, corResponse, sizeof(corResponse), 0);
+}
+
+// function to initiate second TCP channel
 int initiateDataChannel() {
   int newDataSock = socket(AF_INET, SOCK_STREAM, 0);
   if (newDataSock == -1) {
@@ -247,6 +297,7 @@ int main() {
           listOfConnectedClients[newClientSock].userPass = false;
           strcpy(listOfConnectedClients[newClientSock].currDir, ".");
         }
+
         // 2nd case: read data
         else {
           char buffer[256];
@@ -289,10 +340,7 @@ int main() {
 
             // PORT command
             else if (strcmp(resCmd, allCmds[2]) == 0) {
-              // Todo: list all the file directories in current active directory
-              char corResponse[] = "200 PORT command successful.";
-              listOfConnectedClients[i].userCurDataPort = atoi(resDat);
-              send(i, corResponse, sizeof(corResponse), 0);
+              ftpPortCmd(i, resDat);
             }
 
             // LIST, RETR, STOR = fork a new process
@@ -300,10 +348,10 @@ int main() {
               int pid = fork();
               // child process
               if (pid == 0) {
-                close(i);
                 // TODO: do we need to reset FD set? Ask Shan.
 
-                int newDataSock = initiateDataChannel(i);
+                int newDataSock = initiateDataChannel();
+                close(i);
                 struct sockaddr_in clientAddrToSendData;
 
                 bzero(&clientAddrToSendData, sizeof(clientAddrToSendData));
@@ -313,7 +361,7 @@ int main() {
                 // connect
 
                 int connection_status = connect(newDataSock, (struct sockaddr *)&clientAddrToSendData, sizeof(clientAddrToSendData));
-                printf("New data sock: %d\n", newDataSock);
+                printf("--Sending data using socket: %d, to port: %d\n", newDataSock, listOfConnectedClients[i].userCurDataPort);
 
                 // check for errors with the connection
                 if (connection_status == -1) {

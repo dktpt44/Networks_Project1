@@ -12,13 +12,21 @@
 #define SIZE 1024
 
 unsigned short controlPort;
-int newPortForData;
 bool userAuthenticated = false;
+char *thisIPaddr;  // max number of strings allowed in ip
 char curWorkingDir[256] = ".";
+int portDatIndex = 0;
+int listOfPorts[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 // function to get new port
 void getNewPort() {
-  newPortForData = controlPort++;
+  portDatIndex++;
+  portDatIndex %= 10;
+
+  // initializing the port numbers
+  if (listOfPorts[portDatIndex] == 0) {
+    listOfPorts[portDatIndex] = controlPort + portDatIndex;
+  }
 }
 
 // function to initiate initial TCP connection
@@ -32,15 +40,19 @@ int initiateTCP() {
   int value = 1;
   setsockopt(network_socket, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
 
+  // save the ip address in the global variable to send it to the port command
+
   struct sockaddr_in servAddr;
   bzero(&servAddr, sizeof(servAddr));
   servAddr.sin_family = AF_INET;
   servAddr.sin_port = htons(PORT);
   servAddr.sin_addr.s_addr = INADDR_ANY;
 
+  // printing the current ip and port
+
   // connect
   if (connect(network_socket, (struct sockaddr *)&servAddr, sizeof(servAddr)) < 0) {
-    perror("connect");
+    perror("Connection Problem");
     exit(EXIT_FAILURE);
   } else {
     printf("220 Service ready for new user.\n");
@@ -52,6 +64,9 @@ int initiateTCP() {
   getsockname(network_socket, (struct sockaddr *)&clientAddr, &clientSocketSz);
   // getting client port number
   controlPort = ntohs(clientAddr.sin_port);
+  thisIPaddr = inet_ntoa(clientAddr.sin_addr);
+  printf("Client is connecting through port %d, ip:(%s)\n", controlPort, thisIPaddr);
+
   return network_socket;
 }
 
@@ -71,7 +86,7 @@ int iniDataConnection() {
   struct sockaddr_in transferAddress;
   bzero(&transferAddress, sizeof(transferAddress));
   transferAddress.sin_family = AF_INET;
-  transferAddress.sin_port = htons(newPortForData);
+  transferAddress.sin_port = htons(listOfPorts[portDatIndex]);
   transferAddress.sin_addr.s_addr = INADDR_ANY;
 
   // bind the socket to our specified IP and port
@@ -116,20 +131,53 @@ void sepCmdDat(char *buff, char *cmdstr, char *datstr) {
 // function to send port command
 int sendPortCmd(int sockI) {
   char portCmd[256] = "PORT ";
-  char portNoString[256];
-  bzero(portNoString, sizeof(portNoString));
   getNewPort();
-  // TODO: convert port
-  sprintf(portNoString, "%d", newPortForData);
+  int newPortForData = listOfPorts[portDatIndex];
 
-  int i2 = 5;
-  int j2 = 0;
-  while (portNoString[j2] != '\0') {
-    portCmd[i2] = portNoString[j2];
-    i2++;
-    j2++;
+  // convert ip
+  int ix = 5;
+  int jx = 0;
+  while (thisIPaddr[jx] != '\0') {
+    if (thisIPaddr[jx] == '.') {
+      portCmd[ix] = ',';
+    } else {
+      portCmd[ix] = thisIPaddr[jx];
+    }
+    ix++;
+    jx++;
   }
-  portCmd[i2] = '\0';
+  portCmd[ix] = ',';
+  ix++;
+
+  // convert port
+  int p1 = newPortForData / 256;
+  int p2 = newPortForData % 256;
+
+  char p1c[256];
+  char p2c[256];
+  sprintf(p1c, "%d", p1);
+  sprintf(p2c, "%d", p2);
+
+  // adding p1f
+  jx = 0;
+  while (p1c[jx] != '\0') {
+    portCmd[ix] = p1c[jx];
+    ix++;
+    jx++;
+  }
+  // adding comma
+  portCmd[ix] = ',';
+  ix++;
+
+  // adding p2
+  jx = 0;
+  while (p2c[jx] != '\0') {
+    portCmd[ix] = p2c[jx];
+    ix++;
+    jx++;
+  }
+
+  portCmd[ix] = '\0';
   return send(sockI, portCmd, strlen(portCmd), 0);
 }
 
