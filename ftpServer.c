@@ -256,7 +256,7 @@ int main() {
           char buffer[256];
           bzero(buffer, sizeof(buffer));
           int bytes = recv(i, buffer, sizeof(buffer), 0);  // receive
-          printf("Message at: %d> %s\n", i, buffer);
+
           // case1: client has closed the connection
           if (bytes == 0) {
             printf("-Connection closed from client socket: %d. \n", i);
@@ -273,8 +273,8 @@ int main() {
             char resDat[256];
             sepCmdDat(buffer, resCmd, resDat);
 
-            char allCmds[7][5] = {"USER", "PASS", "PORT", "LIST", "RETR", "STOR", "PWD"};
-
+            char allCmds[8][5] = {"USER", "PASS", "PORT", "LIST", "RETR", "STOR", "PWD", "CWD"};
+            chdir(listOfConnectedClients[i].currDir);
             // USER command
             if (strcmp(resCmd, allCmds[0]) == 0)
               ftpUserCmd(i, resDat);
@@ -300,7 +300,7 @@ int main() {
             }
 
             // LIST, RETR, STOR = fork a new process
-            else if (strcmp(resCmd, allCmds[3]) == 0 || strcmp(resCmd, allCmds[4]) == 0) {
+            else if (strcmp(resCmd, allCmds[3]) == 0 || strcmp(resCmd, allCmds[4]) == 0 || strcmp(resCmd, allCmds[5])==0) {
               int pid = fork();
               // child process
               if (pid == 0) {
@@ -375,6 +375,7 @@ int main() {
               }
             }
 
+            //PWD command
             else if(strcmp(resCmd, allCmds[6]) == 0){
               char succMsg[] = "257 pathname ";
               char returnMsg[BUFFERSIZE];
@@ -392,8 +393,51 @@ int main() {
                 j2++;
               }
               send(i, returnMsg, sizeof(returnMsg), 0);
+              bzero(returnMsg,sizeof(returnMsg));
             }
-            // Wrong command
+
+            //CWD command
+            else if(strcmp(resCmd, allCmds[7]) == 0) {
+              char newDir[BUFFERSIZE];
+              char responseMsg[BUFFERSIZE];
+              if(resDat[0] == '.'){
+                strcpy(newDir,resDat);
+              }
+              else if(resDat[0] != '/'){ //if resDat doesn't starts with '/' this means that this input is a folder
+                printf("r");
+                int e2=0;
+                int r2=0;
+                while(listOfConnectedClients[i].currDir[e2] != '\0' ){
+                  newDir[r2] = listOfConnectedClients[i].currDir[e2];
+                  r2++;
+                  e2++;
+                }
+                e2=0;
+                newDir[r2] = '/';
+                r2++;
+                while(resDat[e2] != '\0'){
+                  newDir[r2] = resDat[e2];
+                  r2++;
+                  e2++;
+                }
+              }
+              else{
+                strcpy(newDir,resDat);
+              }
+              if(chdir(newDir) == -1){
+                strcpy(responseMsg,"550 No such directory.\n");
+              }
+              else{
+                bzero(newDir, sizeof(newDir));
+                getcwd(newDir, sizeof(newDir));
+                strcpy(listOfConnectedClients[i].currDir,newDir);
+                strcpy(responseMsg, "200 directory changed to pathname/foldername.");
+              }
+              send(i, responseMsg, sizeof(responseMsg),0);
+              bzero(responseMsg, sizeof(responseMsg));
+              bzero(newDir, sizeof(newDir));
+              
+            }
             else {
               char corResponse[] = "202 Command not implemented.";
               send(i, corResponse, sizeof(corResponse), 0);
@@ -403,6 +447,8 @@ int main() {
             memset(resCmd, 0, strlen(resCmd));
             memset(resDat, 0, strlen(resDat));
           }
+
+          
           // displaying the message received
         }
       }

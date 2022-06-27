@@ -304,10 +304,10 @@ int main()
       else if (strcmp(resCmd, allCmds[4]) == 0)
       {
         if(chdir(resDat) == -1){
-          printf("550 No such directory.\n");
+          printf("No such directory.\n");
         } else{
           getcwd(curWorkingDir, sizeof(curWorkingDir));
-          printf("200 directory changed to pathname/foldername.\n");
+          printf("Directory changed to pathname/foldername.\n");
         }
       }
       else
