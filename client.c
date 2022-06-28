@@ -249,8 +249,8 @@ int main() {
     fgets(buffer, sizeof(buffer), stdin);
     buffer[strcspn(buffer, "\n")] = 0;  // remove trailing newline char from buffer, fgets does not remove it
 
-    if (strcmp(buffer, "exit") == 0) {
-      printf("Connection to the server closed.\n");
+    if (strcmp(buffer, "exit") == 0 || strcmp(buffer, "QUIT")==0) {
+      printf("221 Service closing control connection.\n");
       close(network_socket);
       break;
     } else {

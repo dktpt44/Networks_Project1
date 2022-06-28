@@ -40,6 +40,18 @@ static struct acc accFile[USERMAX];
 // variable to hold the number of users read from file
 int userCount = 0;
 
+// function to check authentication
+bool isAuthenticated(int i)
+{
+  if (!listOfConnectedClients[i].userPass || !listOfConnectedClients[i].userName)
+  {
+    char corResponse[256] = "530 not authenticated.";
+    send(i, corResponse, sizeof(corResponse), 0);
+    return false;
+  }
+  return true;
+}
+
 // function to read users from file
 void loadUserFile()
 {
@@ -101,10 +113,11 @@ int initiateTcp()
 }
 
 // function to break a string to two strings
-void sepCmdDat(char *buff, char *cmdstr, char *datstr)
+int sepCmdDat(char *buff, char *cmdstr, char *datstr)
 {
   int responseSize = strlen(buff), strindx = 0;
   bool secondStr = false;
+  int variableCount = 1;
   // break into command and data
 
   for (int j = 0; j <= responseSize; j++)
@@ -115,6 +128,7 @@ void sepCmdDat(char *buff, char *cmdstr, char *datstr)
       secondStr = true;
       cmdstr[strindx] = '\0';
       strindx = 0;
+      variableCount++;
     }
     else
     {
@@ -130,6 +144,7 @@ void sepCmdDat(char *buff, char *cmdstr, char *datstr)
       strindx++;
     }
   }
+  return variableCount;
 }
 
 // USER command, i = socket
@@ -385,7 +400,7 @@ int main()
           printf("+New connection at socket: %d, ip: %s, port: %d\n", newClientSock, inet_ntoa(clientAddrs.sin_addr), ntohs(clientAddrs.sin_port));
           listOfConnectedClients[newClientSock].userName = false;
           listOfConnectedClients[newClientSock].userPass = false;
-          strcpy(listOfConnectedClients[newClientSock].currDir, ".");
+          strcpy(listOfConnectedClients[newClientSock].currDir, initDir);
         }
 
         // 2nd case: read data
@@ -412,115 +427,212 @@ int main()
           {
             char resCmd[256];
             char resDat[256];
-            sepCmdDat(buffer, resCmd, resDat);
+            int seqCheck = sepCmdDat(buffer, resCmd, resDat);
 
             char allCmds[8][5] = {"USER", "PASS", "PORT", "LIST", "RETR", "STOR", "PWD", "CWD"};
             chdir(listOfConnectedClients[i].currDir);
             // USER command
             if (strcmp(resCmd, allCmds[0]) == 0)
+            {
               ftpUserCmd(i, resDat);
+            }
 
             // PASS command
             else if (strcmp(resCmd, allCmds[1]) == 0)
+            {
               ftpPassCmd(i, resDat);
+            }
 
             // CHECK if authetiated or not
-            else if (!listOfConnectedClients[i].userPass || !listOfConnectedClients[i].userName)
-            {
-              char corResponse[256] = "530 not authenticated.";
-              send(i, corResponse, sizeof(corResponse), 0);
-              memset(resCmd, 0, sizeof(resCmd));
-              memset(resDat, 0, sizeof(resDat));
-            }
 
             // PORT command
             else if (strcmp(resCmd, allCmds[2]) == 0)
             {
-              ftpPortCmd(i, resDat);
+              if (isAuthenticated(i))
+              {
+                ftpPortCmd(i, resDat);
+              }
             }
 
             // LIST, RETR, STOR = fork a new process
             else if (strcmp(resCmd, allCmds[3]) == 0 || strcmp(resCmd, allCmds[4]) == 0)
             {
-              int pid = fork();
-              // child process
-              if (pid == 0)
+              if (isAuthenticated(i))
               {
-                // TODO: do we need to reset FD set? Ask Shan.
 
-                int newDataSock = initiateDataChannel();
-                close(i);
-                struct sockaddr_in clientAddrToSendData;
-
-                bzero(&clientAddrToSendData, sizeof(clientAddrToSendData));
-                clientAddrToSendData.sin_family = AF_INET;
-                clientAddrToSendData.sin_port = htons(listOfConnectedClients[i].userCurDataPort);
-                clientAddrToSendData.sin_addr.s_addr = INADDR_ANY;
-                // connect
-
-                int connection_status = connect(newDataSock, (struct sockaddr *)&clientAddrToSendData, sizeof(clientAddrToSendData));
-                printf("+Sending data, using socket: %d, to client port: %d\n", newDataSock, listOfConnectedClients[i].userCurDataPort);
-
-                // check for errors with the connection
-                if (connection_status == -1)
+                int pid = fork();
+                // child process
+                if (pid == 0)
                 {
-                  printf("There was an error making a connection to the remote socket \n\n");
-                  exit(EXIT_FAILURE);
-                }
-                else
-                {
-                  // Todo: maybe this response is automated
-                  char corResponse[256] = "150 File status okay; about to open. data connection.";
-                  send(newDataSock, corResponse, sizeof(corResponse), 0);
+                  // TODO: do we need to reset FD set? Ask Shan.
 
-                  // LIST command
-                  if (strcmp(resCmd, allCmds[3]) == 0)
-                    ftpListCmd(newDataSock);
+                  int newDataSock = initiateDataChannel();
+                  close(i);
+                  struct sockaddr_in clientAddrToSendData;
 
-                  // RETR command
-                  else if (strcmp(resCmd, allCmds[4]) == 0)
+                  bzero(&clientAddrToSendData, sizeof(clientAddrToSendData));
+                  clientAddrToSendData.sin_family = AF_INET;
+                  clientAddrToSendData.sin_port = htons(listOfConnectedClients[i].userCurDataPort);
+                  clientAddrToSendData.sin_addr.s_addr = INADDR_ANY;
+                  // connect
+
+                  int connection_status = connect(newDataSock, (struct sockaddr *)&clientAddrToSendData, sizeof(clientAddrToSendData));
+
+                  // check for errors with the connection
+                  if (connection_status == -1)
                   {
-                    // char dum[256];
-                    // recv(newDataSock, &dum, sizeof(dum), 0);
-                    // printf("%s\n", dum);
-                    char filename[256];
-                    int i2 = 0;
-                    int j2 = 0;
-                    while (listOfConnectedClients[i].currDir[i2] != '\0')
-                    {
-                      filename[j2] = listOfConnectedClients[i].currDir[i2];
-                      i2++;
-                      j2++;
-                    }
-                    filename[j2] = '/';
-                    j2++;
-                    i2 = 0;
-                    while (resDat[i2] != '\0')
-                    {
-                      filename[j2] = resDat[i2];
-                      i2++;
-                      j2++;
-                    }
-                    filename[j2] = '\0';
-                    // send the file
-
-                    // TODO: check
-
-                    sFile(filename, newDataSock);
+                    printf("There was an error making a connection to the remote socket \n\n");
+                    exit(EXIT_FAILURE);
                   }
+                  else
+                  {
+                    // Todo: maybe this response is automated
+                    char corResponse[256] = "150 File status okay; about to open. data connection.";
+                    send(newDataSock, corResponse, sizeof(corResponse), 0);
 
-                  printf("-Sending done, closing sock: %d, to client port: %d\n", newDataSock, listOfConnectedClients[i].userCurDataPort);
+                    // LIST command
+                    if (strcmp(resCmd, allCmds[3]) == 0)
+                      ftpListCmd(newDataSock);
 
-                  close(newDataSock);
-                  exit(1);
+                    // RETR command
+                    else if (strcmp(resCmd, allCmds[4]) == 0)
+                    {
+                      printf("+Sending data, using socket: %d, to client port: %d\n", newDataSock, listOfConnectedClients[i].userCurDataPort);
+
+                      // char dum[256];
+                      // recv(newDataSock, &dum, sizeof(dum), 0);
+                      // printf("%s\n", dum);
+                      char filename[256];
+                      int i2 = 0;
+                      int j2 = 0;
+                      while (listOfConnectedClients[i].currDir[i2] != '\0')
+                      {
+                        filename[j2] = listOfConnectedClients[i].currDir[i2];
+                        i2++;
+                        j2++;
+                      }
+                      filename[j2] = '/';
+                      j2++;
+                      i2 = 0;
+                      while (resDat[i2] != '\0')
+                      {
+                        filename[j2] = resDat[i2];
+                        i2++;
+                        j2++;
+                      }
+                      filename[j2] = '\0';
+                      // send the file
+
+                      // TODO: check
+
+                      sFile(filename, newDataSock);
+                    }
+
+                    printf("-Sending done, closing sock: %d, to client port: %d\n", newDataSock, listOfConnectedClients[i].userCurDataPort);
+
+                    close(newDataSock);
+                    exit(1);
+                  }
                 }
               }
             }
 
-            // Wrong command
+            // PWD
+            else if (strcmp(resCmd, allCmds[6]) == 0)
+            {
+              if (seqCheck > 1)
+              {
+                char invalid[] = "503 Bad sequence of commands.";
+                send(i, invalid, sizeof(invalid), 0);
+              }
+              else if (isAuthenticated(i))
+              {
+                char succMsg[] = "257 pathname ";
+                char returnMsg[BUFFERSIZE];
+                int j2 = 0;
+                int i2 = 0;
+                while (succMsg[j2] != '\0')
+                {
+                  returnMsg[i2] = succMsg[j2];
+                  i2++;
+                  j2++;
+                }
+                j2 = 0;
+                while (listOfConnectedClients[i].currDir[j2] != '\0')
+                {
+                  returnMsg[i2] = listOfConnectedClients[i].currDir[j2];
+                  i2++;
+                  j2++;
+                }
+                send(i, returnMsg, sizeof(returnMsg), 0);
+                bzero(returnMsg, sizeof(returnMsg));
+              }
+            }
+
+            // CWD command
+            else if (strcmp(resCmd, allCmds[7]) == 0)
+            {
+              if (isAuthenticated(i))
+              {
+                char newDir[BUFFERSIZE];
+                char responseMsg[BUFFERSIZE];
+                if (resDat[0] == '.')
+                {
+                  strcpy(newDir, resDat);
+                }
+                else if (resDat[0] != '/')
+                { // if resDat doesn't starts with '/' this means that this input is a folder
+                  printf("r");
+                  int e2 = 0;
+                  int r2 = 0;
+                  while (listOfConnectedClients[i].currDir[e2] != '\0')
+                  {
+                    newDir[r2] = listOfConnectedClients[i].currDir[e2];
+                    r2++;
+                    e2++;
+                  }
+                  e2 = 0;
+                  newDir[r2] = '/';
+                  r2++;
+                  while (resDat[e2] != '\0')
+                  {
+                    newDir[r2] = resDat[e2];
+                    r2++;
+                    e2++;
+                  }
+                }
+                else
+                {
+                  strcpy(newDir, resDat);
+                }
+                if (chdir(newDir) == -1)
+                {
+                  strcpy(responseMsg, "550 No such directory.\n");
+                }
+                else
+                {
+                  bzero(newDir, sizeof(newDir));
+                  getcwd(newDir, sizeof(newDir));
+                  strcpy(listOfConnectedClients[i].currDir, newDir);
+                  strcpy(responseMsg, "200 directory changed to pathname/foldername.");
+                }
+                send(i, responseMsg, sizeof(responseMsg), 0);
+                bzero(responseMsg, sizeof(responseMsg));
+                bzero(newDir, sizeof(newDir));
+              }
+              // Wrong command
+            }
             else
             {
-              char corResponse[256] = "202 Command not implemented.";
+              char corResponse[256];
+              if (seqCheck > 2)
+              {
+                strcpy(corResponse, "503 Bad sequence of commands.");
+              }
+              else
+              {
+                strcpy(corResponse, "202 Command not implemented.");
+              }
               send(i, corResponse, sizeof(corResponse), 0);
             }
 
