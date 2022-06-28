@@ -15,26 +15,30 @@
 unsigned short controlPort;
 int newPortForData;
 bool userAuthenticated = false;
-char *thisIPaddr;  // max number of strings allowed in ip
+char *thisIPaddr; // max number of strings allowed in ip
 char curWorkingDir[256];
 int portDatIndex = 0;
 int listOfPorts[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 // function to get new port
-void getNewPort() {
+void getNewPort()
+{
   portDatIndex++;
   portDatIndex %= 10;
 
   // initializing the port numbers
-  if (listOfPorts[portDatIndex] == 0) {
+  if (listOfPorts[portDatIndex] == 0)
+  {
     listOfPorts[portDatIndex] = controlPort + portDatIndex;
   }
 }
 
 // function to initiate initial TCP connection
-int initiateTCP() {
+int initiateTCP()
+{
   int network_socket = socket(AF_INET, SOCK_STREAM, 0);
-  if (network_socket == -1) {  // check for fail error
+  if (network_socket == -1)
+  { // check for fail error
     printf("Socket creation failed..\n");
     exit(EXIT_FAILURE);
   }
@@ -53,10 +57,13 @@ int initiateTCP() {
   // printing the current ip and port
 
   // connect
-  if (connect(network_socket, (struct sockaddr *)&servAddr, sizeof(servAddr)) < 0) {
+  if (connect(network_socket, (struct sockaddr *)&servAddr, sizeof(servAddr)) < 0)
+  {
     perror("Connection Problem");
     exit(EXIT_FAILURE);
-  } else {
+  }
+  else
+  {
     printf("220 Service ready for new user.\n");
   }
 
@@ -73,15 +80,18 @@ int initiateTCP() {
 }
 
 // function to initiate data connection
-int iniDataConnection() {
+int iniDataConnection()
+{
   int newSocket = socket(AF_INET, SOCK_STREAM, 0);
   // check for fail error
-  if (newSocket == -1) {
+  if (newSocket == -1)
+  {
     printf("socket creation failed..\n");
     exit(EXIT_FAILURE);
   }
   int value = 1;
-  if (setsockopt(newSocket, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0) {
+  if (setsockopt(newSocket, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0)
+  {
     perror("binding failed! \n");
   }
   // define server address structure
@@ -92,13 +102,15 @@ int iniDataConnection() {
   transferAddress.sin_addr.s_addr = INADDR_ANY;
 
   // bind the socket to our specified IP and port
-  if (bind(newSocket, (struct sockaddr *)&transferAddress, sizeof(transferAddress)) < 0) {
+  if (bind(newSocket, (struct sockaddr *)&transferAddress, sizeof(transferAddress)) < 0)
+  {
     printf("socket bind failed..\n");
     exit(EXIT_FAILURE);
   }
 
   // after it is bound, we can listen for connections
-  if (listen(newSocket, 5) < 0) {
+  if (listen(newSocket, 5) < 0)
+  {
     printf("Listen failed..\n");
     close(newSocket);
     exit(EXIT_FAILURE);
@@ -107,31 +119,43 @@ int iniDataConnection() {
 }
 
 // function to break a string to two strings
-void sepCmdDat(char *buff, char *cmdstr, char *datstr) {
+int sepCmdDat(char *buff, char *cmdstr, char *datstr)
+{
   int responseSize = strlen(buff), strindx = 0;
   bool secondStr = false;
+  int variableCount = 1;
   // break into command and data
 
-  for (int j = 0; j <= responseSize; j++) {
-    if (buff[j] == ' ') {
+  for (int j = 0; j <= responseSize; j++)
+  {
+    if (buff[j] == ' ')
+    {
       // command string e.g. "USER", "PASS", "STOR", etc.
       secondStr = true;
       cmdstr[strindx] = '\0';
       strindx = 0;
-    } else {
+      variableCount++;
+    }
+    else
+    {
       // data string (if any)
-      if (!secondStr) {
+      if (!secondStr)
+      {
         cmdstr[strindx] = buff[j];
-      } else {
+      }
+      else
+      {
         datstr[strindx] = buff[j];
       }
       strindx++;
     }
   }
+  return variableCount;
 }
 
 // function to send port command
-int sendPortCmd(int sockI) {
+int sendPortCmd(int sockI)
+{
   char portCmd[256] = "PORT ";
 
   getNewPort();
@@ -140,10 +164,14 @@ int sendPortCmd(int sockI) {
   // convert ip
   int ix = 5;
   int jx = 0;
-  while (thisIPaddr[jx] != '\0') {
-    if (thisIPaddr[jx] == '.') {
+  while (thisIPaddr[jx] != '\0')
+  {
+    if (thisIPaddr[jx] == '.')
+    {
       portCmd[ix] = ',';
-    } else {
+    }
+    else
+    {
       portCmd[ix] = thisIPaddr[jx];
     }
     ix++;
@@ -163,7 +191,8 @@ int sendPortCmd(int sockI) {
 
   // adding p1f
   jx = 0;
-  while (p1c[jx] != '\0') {
+  while (p1c[jx] != '\0')
+  {
     portCmd[ix] = p1c[jx];
     ix++;
     jx++;
@@ -174,7 +203,8 @@ int sendPortCmd(int sockI) {
 
   // adding p2
   jx = 0;
-  while (p2c[jx] != '\0') {
+  while (p2c[jx] != '\0')
+  {
     portCmd[ix] = p2c[jx];
     ix++;
     jx++;
@@ -185,7 +215,8 @@ int sendPortCmd(int sockI) {
 }
 
 // function to receive file over data channel
-void recvFile(int i, char *filename) {
+void recvFile(int i, char *filename)
+{
   printf("\n");
   int n;
   char buffer[256];
@@ -201,12 +232,14 @@ void recvFile(int i, char *filename) {
   FILE *fp;
   bzero(buffer, sizeof(buffer));
   fp = fopen(filename, "ab");
-  while (1) {
+  while (1)
+  {
     n = recv(i, buffer, sizeof(buffer), 0);
 
     readBytesCount += n;
 
-    if ((readBytesCount >= fsize) && (readBytesCount < fsize + 256)) {
+    if ((readBytesCount >= fsize) && (readBytesCount < fsize + 256))
+    {
       int resIx = 0;
       int partDat = readBytesCount - fsize;
 
@@ -214,19 +247,24 @@ void recvFile(int i, char *filename) {
       char resd[256];
       int limt = sizeof(buffer);
 
-      for (int jx = 256 - partDat; jx < limt; jx++) {
+      for (int jx = 256 - partDat; jx < limt; jx++)
+      {
         resd[resIx] = buffer[jx];
         resIx++;
       }
       printf("%s", resd);
-
-    } else if (readBytesCount <= fsize) {
+    }
+    else if (readBytesCount <= fsize)
+    {
       fwrite(buffer, 1, n, fp);
-    } else {
+    }
+    else
+    {
       printf("%s\n", buffer);
     }
     bzero(buffer, sizeof(buffer));
-    if (n <= 0) {
+    if (n <= 0)
+    {
       break;
     }
   }
@@ -236,120 +274,167 @@ void recvFile(int i, char *filename) {
   return;
 }
 
-int main() {
+int main()
+{
   // create a socket
   int network_socket = initiateTCP();
   char buffer[256];
   bzero(buffer, sizeof(buffer));
 
-  while (1) {
+  while (1)
+  {
     printf("ftp> ");
 
     // get input from user
     fgets(buffer, sizeof(buffer), stdin);
-    buffer[strcspn(buffer, "\n")] = 0;  // remove trailing newline char from buffer, fgets does not remove it
+    buffer[strcspn(buffer, "\n")] = 0; // remove trailing newline char from buffer, fgets does not remove it
 
-    if (strcmp(buffer, "exit") == 0 || strcmp(buffer, "QUIT")==0) {
+    if (strcmp(buffer, "exit") == 0 || strcmp(buffer, "QUIT") == 0)
+    {
       printf("221 Service closing control connection.\n");
       close(network_socket);
       break;
-    } else {
+    }
+    else
+    {
       // parse command : break into command and data
       char resCmd[256];
       char resDat[256];
-      sepCmdDat(buffer, resCmd, resDat);
-     char allCmds[6][5] = {"RETR", "LIST", "STOR", "!PWD", "!CWD", "!LIST"};
+      int seqCheck = sepCmdDat(buffer, resCmd, resDat);
+      char allCmds[6][5] = {"RETR", "LIST", "STOR", "!PWD", "!CWD", "!LIST"};
 
       // check if any of the LIST, RETR or STOR commands are input by user
-      if ((strcmp(resCmd, allCmds[0]) == 0 || strcmp(resCmd, allCmds[1]) == 0 || strcmp(resCmd, allCmds[2]) == 0) && userAuthenticated) {
+      if ((strcmp(resCmd, allCmds[0]) == 0 || strcmp(resCmd, allCmds[1]) == 0 || strcmp(resCmd, allCmds[2]) == 0) && userAuthenticated)
+      {
         /* send the port command to the server first */
-        if (sendPortCmd(network_socket) < 0) {
-          perror("send");
-          exit(EXIT_FAILURE);
-        } else {
-          // get data back
-          char response[1024];
-          bzero(response, sizeof(response));
-          recv(network_socket, &response, sizeof(response), 0);
-          printf("%s\n", response);
+        if (((strcmp(resCmd, allCmds[0]) == 0) && (seqCheck > 2)) || ((strcmp(resCmd, allCmds[1]) == 0) && (seqCheck > 1)) || ((strcmp(resCmd, allCmds[2]) == 0) && (seqCheck > 2)))
+        {
 
-          // send the command now
-          if (send(network_socket, buffer, sizeof(buffer), 0) < 0) {
+          printf("503 Bad sequence of commands.\n");
+        }
+        else
+        {
+          if (sendPortCmd(network_socket) < 0)
+          {
             perror("send");
             exit(EXIT_FAILURE);
           }
+          else
+          {
+            // get data back
+            char response[1024];
+            bzero(response, sizeof(response));
+            recv(network_socket, &response, sizeof(response), 0);
+            printf("%s\n", response);
 
-          // fork a new process for data transfer
-          int pid = fork();
-          // if it is the child process
-          if (pid == 0) {
-            // new TCP connection and listen to the port
-
-            close(network_socket);  // close the copy of master socket in child process
-            int newSocket = iniDataConnection();
-            int client_socket = accept(newSocket, 0, 0);
-
-            char buffer2[256];
-            bzero(buffer2, sizeof(buffer2));
-            recv(client_socket, &buffer2, sizeof(buffer2), 0);  // receive
-            // prints 150 file status okay
-            printf("%s", buffer2);
-            // start receiving data
-            bzero(buffer2, sizeof(buffer2));
-
-            // RETR command
-            if (strcmp(resCmd, allCmds[0]) == 0) {
-              // char dummy2[] = "ddf";
-              // send(client_socket, dummy2, sizeof(dummy2), 0);
-              recvFile(client_socket, resDat);
+            // send the command now
+            if (send(network_socket, buffer, sizeof(buffer), 0) < 0)
+            {
+              perror("send");
+              exit(EXIT_FAILURE);
             }
 
-            // LIST command
-            else if (strcmp(resCmd, allCmds[1]) == 0) {
+            // fork a new process for data transfer
+            int pid = fork();
+            // if it is the child process
+            if (pid == 0)
+            {
+              // new TCP connection and listen to the port
 
-              int endWhile = 1;
+              close(network_socket); // close the copy of master socket in child process
+              int newSocket = iniDataConnection();
+              int client_socket = accept(newSocket, 0, 0);
 
-              while (endWhile != 0) {
-                endWhile = recv(client_socket, &buffer2, sizeof(buffer2), 0);
-                printf("%s\n", buffer2);
-                bzero(buffer2, sizeof(buffer2));
+              char buffer2[256];
+              bzero(buffer2, sizeof(buffer2));
+              recv(client_socket, &buffer2, sizeof(buffer2), 0); // receive
+              // prints 150 file status okay
+              printf("%s", buffer2);
+              // start receiving data
+              bzero(buffer2, sizeof(buffer2));
+
+              // RETR command
+              if (strcmp(resCmd, allCmds[0]) == 0)
+              {
+                // char dummy2[] = "ddf";
+                // send(client_socket, dummy2, sizeof(dummy2), 0);
+                recvFile(client_socket, resDat);
               }
+
+              // LIST command
+              else if (strcmp(resCmd, allCmds[1]) == 0)
+              {
+
+                int endWhile = 1;
+
+                while (endWhile != 0)
+                {
+                  endWhile = recv(client_socket, &buffer2, sizeof(buffer2), 0);
+                  printf("%s\n", buffer2);
+                  bzero(buffer2, sizeof(buffer2));
+                }
+              }
+
+              // STOR command
+              else if (strcmp(resCmd, allCmds[2]) == 0)
+              {
+              }
+
+              close(client_socket);
+              exit(1);
             }
 
-            // STOR command
-            else if (strcmp(resCmd, allCmds[2]) == 0) {
+            else
+            { // if it is the parent process
+              wait(NULL);
+              // TODO: possible error close socket
             }
-
-            close(client_socket);
-            exit(1);
-          }
-
-          else {  // if it is the parent process
-            wait(NULL);
-            // TODO: possible error close socket
           }
         }
-
       }
 
       // for rest of the commands
       else if (strcmp(resCmd, allCmds[5]) == 0 && userAuthenticated)
       {
-        system("ls");
+        if (seqCheck > 1)
+        {
+          printf("503 Bad sequence of commands.\n");
+        }
+        else
+        {
+          system("ls");
+        }
       }
 
       else if (strcmp(resCmd, allCmds[3]) == 0 && userAuthenticated)
       {
-        system("pwd");
+        if (seqCheck > 1)
+        {
+          printf("503 Bad sequence of commands.\n");
+        }
+        else
+        {
+          system("pwd");
+        }
       }
 
       else if (strcmp(resCmd, allCmds[4]) == 0 && userAuthenticated)
       {
-        if(chdir(resDat) == -1){
-          printf("No such directory.\n");
-        } else{
-          getcwd(curWorkingDir, sizeof(curWorkingDir));
-          printf("Directory changed to pathname/foldername.\n");
+        if (seqCheck > 2)
+        {
+          printf("503 Bad sequence of commands.\n");
+        }
+        else
+        {
+          if (chdir(resDat) == -1)
+          {
+            printf("No such directory.\n");
+          }
+          else
+          {
+            getcwd(curWorkingDir, sizeof(curWorkingDir));
+            printf("Directory changed to pathname/foldername.\n");
+          }
         }
       }
       else
@@ -360,7 +445,9 @@ int main() {
         {
           perror("send");
           exit(EXIT_FAILURE);
-        }else {
+        }
+        else
+        {
           // get data back
           char response[256];
           bzero(response, sizeof(response));
@@ -369,7 +456,7 @@ int main() {
           printf("%s\n", response);
 
           // check if authentication was successful from the server
-          char passCorrect[] = "230 User logged in, proceed.";
+          char passCorrect[] = "230 User logged in, proceed.\n";
           if (strcmp(response, passCorrect) == 0)
             userAuthenticated = true;
         }
