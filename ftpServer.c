@@ -212,11 +212,10 @@ void ftpListCmd(int i)
     {
       // dummy read
 
-      bzero(buffer2, sizeof(buffer2));
-      recv(i, &buffer2, sizeof(buffer2), 0); // receive dummy
-
       // send
-      send(i, drty->d_name, sizeof(drty->d_name), 0);
+      strcpy(buffer2, drty -> d_name);
+      send(i, buffer2, sizeof(buffer2), 0);
+      bzero(buffer2, sizeof(buffer2));
     }
     closedir(direct);
   }
@@ -432,13 +431,13 @@ int main()
             char allCmds[8][5] = {"USER", "PASS", "PORT", "LIST", "RETR", "STOR", "PWD", "CWD"};
             chdir(listOfConnectedClients[i].currDir);
             // USER command
-            if (strcmp(resCmd, allCmds[0]) == 0)
+            if (strcmp(resCmd, allCmds[0]) == 0 && seqCheck < 3)
             {
               ftpUserCmd(i, resDat);
             }
 
             // PASS command
-            else if (strcmp(resCmd, allCmds[1]) == 0)
+            else if (strcmp(resCmd, allCmds[1]) == 0 && seqCheck < 3)
             {
               ftpPassCmd(i, resDat);
             }
@@ -446,7 +445,7 @@ int main()
             // CHECK if authetiated or not
 
             // PORT command
-            else if (strcmp(resCmd, allCmds[2]) == 0)
+            else if (strcmp(resCmd, allCmds[2]) == 0 && seqCheck < 3)
             {
               if (isAuthenticated(i))
               {
@@ -455,7 +454,7 @@ int main()
             }
 
             // LIST, RETR, STOR = fork a new process
-            else if (strcmp(resCmd, allCmds[3]) == 0 || strcmp(resCmd, allCmds[4]) == 0)
+            else if ((strcmp(resCmd, allCmds[3]) == 0 || strcmp(resCmd, allCmds[4]) == 0) && seqCheck < 3)
             {
               if (isAuthenticated(i))
               {
@@ -491,11 +490,11 @@ int main()
                     send(newDataSock, corResponse, sizeof(corResponse), 0);
 
                     // LIST command
-                    if (strcmp(resCmd, allCmds[3]) == 0)
+                    if (strcmp(resCmd, allCmds[3]) == 0 && seqCheck < 2)
                       ftpListCmd(newDataSock);
 
                     // RETR command
-                    else if (strcmp(resCmd, allCmds[4]) == 0)
+                    else if (strcmp(resCmd, allCmds[4]) == 0 && seqCheck < 3)
                     {
                       printf("+Sending data, using socket: %d, to client port: %d\n", newDataSock, listOfConnectedClients[i].userCurDataPort);
 
@@ -538,14 +537,10 @@ int main()
             }
 
             // PWD
-            else if (strcmp(resCmd, allCmds[6]) == 0)
+            else if (strcmp(resCmd, allCmds[6]) == 0 && seqCheck < 2)
             {
-              if (seqCheck > 1)
-              {
-                char invalid[] = "503 Bad sequence of commands.";
-                send(i, invalid, sizeof(invalid), 0);
-              }
-              else if (isAuthenticated(i))
+
+              if (isAuthenticated(i))
               {
                 char succMsg[] = "257 pathname ";
                 char returnMsg[BUFFERSIZE];
@@ -570,7 +565,7 @@ int main()
             }
 
             // CWD command
-            else if (strcmp(resCmd, allCmds[7]) == 0)
+            else if (strcmp(resCmd, allCmds[7]) == 0 && seqCheck < 3)
             {
               if (isAuthenticated(i))
               {
@@ -625,7 +620,7 @@ int main()
             else
             {
               char corResponse[256];
-              if (seqCheck > 2)
+              if (seqCheck > 1)
               {
                 strcpy(corResponse, "503 Bad sequence of commands.");
               }

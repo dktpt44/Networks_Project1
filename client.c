@@ -306,13 +306,10 @@ int main() {
 
             // LIST command
             else if (strcmp(resCmd, allCmds[1]) == 0) {
-              char dummy[] = "dummy";
 
               int endWhile = 1;
 
               while (endWhile != 0) {
-                send(client_socket, dummy, sizeof(dummy), 0);  // send
-                bzero(buffer2, sizeof(buffer2));
                 endWhile = recv(client_socket, &buffer2, sizeof(buffer2), 0);
                 printf("%s\n", buffer2);
                 bzero(buffer2, sizeof(buffer2));
@@ -336,17 +333,17 @@ int main() {
       }
 
       // for rest of the commands
-      else if (strcmp(resCmd, allCmds[5]) == 0)
+      else if (strcmp(resCmd, allCmds[5]) == 0 && userAuthenticated)
       {
         system("ls");
       }
 
-      else if (strcmp(resCmd, allCmds[3]) == 0)
+      else if (strcmp(resCmd, allCmds[3]) == 0 && userAuthenticated)
       {
         system("pwd");
       }
 
-      else if (strcmp(resCmd, allCmds[4]) == 0)
+      else if (strcmp(resCmd, allCmds[4]) == 0 && userAuthenticated)
       {
         if(chdir(resDat) == -1){
           printf("No such directory.\n");
