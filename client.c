@@ -178,26 +178,48 @@ int sendPortCmd(int sockI) {
   }
 
   portCmd[ix] = '\0';
-  return send(sockI, portCmd, strlen(portCmd), 0);
+  return send(sockI, portCmd, sizeof(portCmd), 0);
 }
 
 // function to receive file over data channel
 void recvFile(int i, char *filename) {
+  printf("\n");
   int n;
-  char buffer[SIZE];
-  FILE *fp;
-  fp = fopen(filename, "w");
-  while (1) {
-    n = recv(i, buffer, SIZE, 0);
-    fprintf(fp, "%s", buffer);
-    printf("p2: %s\n", buffer);
+  char buffer[256];
 
+  bzero(buffer, sizeof(buffer));
+  // receive file size
+  recv(i, buffer, sizeof(buffer), 0);
+  long int fsize;
+  sscanf(buffer, "%ld", &fsize);
+  printf("got:%ld\n", fsize);
+
+  long int readBytesCount = 0;
+
+  FILE *fp;
+  bzero(buffer, sizeof(buffer));
+  fp = fopen(filename, "ab");
+  while (1) {
+    n = recv(i, buffer, sizeof(buffer), 0);
+    printf("n:%d\n", n);
+    printf("BC:%ld\n", readBytesCount);
+    readBytesCount += n;
+    if (readBytesCount >= fsize) {
+      int rx = 0;
+      while () {
+      }
+      printf("p2:-%s-\n ", buffer);
+    } else {
+      fwrite(buffer, 1, n, fp);
+    }
+    bzero(buffer, sizeof(buffer));
     if (n <= 0) {
       break;
-      return;
     }
-    bzero(buffer, SIZE);
   }
+  printf("Done\n");
+  // at the end of file send a request to server to check if file transfer completed
+
   fclose(fp);
   return;
 }
@@ -206,6 +228,7 @@ int main() {
   // create a socket
   int network_socket = initiateTCP();
   char buffer[256];
+  bzero(buffer, sizeof(buffer));
 
   while (1) {
     printf("ftp> ");
@@ -227,7 +250,7 @@ int main() {
 
       // check if any of the LIST, RETR or STOR commands are input by user
       if ((strcmp(resCmd, allCmds[0]) == 0 || strcmp(resCmd, allCmds[1]) == 0 || strcmp(resCmd, allCmds[2]) == 0) && userAuthenticated) {
-        /* send the port command to the server */
+        /* send the port command to the server first */
         if (sendPortCmd(network_socket) < 0) {
           perror("send");
           exit(EXIT_FAILURE);
@@ -239,7 +262,7 @@ int main() {
           printf("%s\n", response);
 
           // send the command now
-          if (send(network_socket, buffer, strlen(buffer), 0) < 0) {
+          if (send(network_socket, buffer, sizeof(buffer), 0) < 0) {
             perror("send");
             exit(EXIT_FAILURE);
           }
@@ -257,14 +280,15 @@ int main() {
             char buffer2[256];
             bzero(buffer2, sizeof(buffer2));
             recv(client_socket, &buffer2, sizeof(buffer2), 0);  // receive
-
-            printf("Here: %s\n", buffer2);
+            // prints 150 file status okay
+            printf("%s\n", buffer2);
             // start receiving data
+            bzero(buffer2, sizeof(buffer2));
 
             // RETR command
             if (strcmp(resCmd, allCmds[0]) == 0) {
-              char dummy2[] = "ddf";
-              send(client_socket, dummy2, sizeof(dummy2), 0);
+              // char dummy2[] = "ddf";
+              // send(client_socket, dummy2, sizeof(dummy2), 0);
               recvFile(client_socket, resDat);
             }
 
@@ -279,6 +303,7 @@ int main() {
                 bzero(buffer2, sizeof(buffer2));
                 endWhile = recv(client_socket, &buffer2, sizeof(buffer2), 0);
                 printf("%s\n", buffer2);
+                bzero(buffer2, sizeof(buffer2));
               }
             }
 
@@ -296,17 +321,22 @@ int main() {
           }
         }
 
-      } else {
-        // for rest of the commands
-        if (send(network_socket, buffer, strlen(buffer), 0) < 0) {
+      }
+
+      // for rest of the commands
+      else {
+        if (send(network_socket, buffer, sizeof(buffer), 0) < 0) {
           perror("send");
           exit(EXIT_FAILURE);
         } else {
           // get data back
-          char response[1024];
+          char response[256];
+          bzero(response, sizeof(response));
+
           recv(network_socket, &response, sizeof(response), 0);
           printf("%s\n", response);
 
+          // check if authentication was successful from the server
           char passCorrect[] = "230 User logged in, proceed.";
           if (strcmp(response, passCorrect) == 0)
             userAuthenticated = true;

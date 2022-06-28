@@ -41,7 +41,8 @@ int userCount = 0;
 void loadUserFile() {
   FILE *userFile = fopen("user.txt", "r");
   int strCount = 0;
-  char str;
+  char str = ' ';
+  // get the number of users
   while (!feof(userFile)) {
     str = fgetc(userFile);
     if (str == '\n') {
@@ -49,6 +50,7 @@ void loadUserFile() {
     }
   }
   rewind(userFile);
+  // store in the variable
   while (strCount < userCount + 1) {
     fscanf(userFile, "%s %s", accFile[strCount].user, accFile[strCount].pw);
     strCount += 1;
@@ -80,7 +82,7 @@ int initiateTcp() {
     close(serverSocket);
     exit(EXIT_FAILURE);
   } else {
-    printf("Server is listening at port: %d, ip:(%s)\n", ntohs(servAddr.sin_port), inet_ntoa(servAddr.sin_addr));
+    printf("Server is listening at port: %d, ip: %s\n", ntohs(servAddr.sin_port), inet_ntoa(servAddr.sin_addr));
   }
   return serverSocket;
 }
@@ -122,13 +124,13 @@ if (resDat[0] == '\0') {
       foundDat = true;
       listOfConnectedClients[i].userIndex = n;  // found at nth pos in array
       listOfConnectedClients[i].userName = true;
-      char corResponse[] = "331 Username OK, need password.";
+      char corResponse[256] = "331 Username OK, need password.";
       send(i, corResponse, sizeof(corResponse), 0);
       break;
     }
   }
   if (!foundDat) {
-    char corResponse[] = "530 Not logged in.";
+    char corResponse[256] = "530 Not logged in.";
     send(i, corResponse, sizeof(corResponse), 0);
   }
 }
@@ -136,15 +138,15 @@ if (resDat[0] == '\0') {
 // PASS command, i = socket
 void ftpPassCmd(int i, char *resDat) {
   if (!listOfConnectedClients[i].userName) {
-    char corResponse[] = "530 Not logged in.";
+    char corResponse[256] = "530 Not logged in.";
     send(i, corResponse, sizeof(corResponse), 0);
   } else {
     if (strcmp(resDat, accFile[listOfConnectedClients[i].userIndex].pw) == 0) {
-      char corResponse[] = "230 User logged in, proceed.";
+      char corResponse[256] = "230 User logged in, proceed.";
       listOfConnectedClients[i].userPass = true;
       send(i, corResponse, sizeof(corResponse), 0);
     } else {
-      char corResponse[] = "530 Not logged in.";
+      char corResponse[256] = "530 Not logged in.";
       send(i, corResponse, sizeof(corResponse), 0);
     }
   }
@@ -215,7 +217,7 @@ void ftpPortCmd(int i, char *resDat) {
   listOfConnectedClients[i].clientIPAddr = ipAdr;
 
   // do stuff
-  char corResponse[] = "200 PORT command successful.";
+  char corResponse[256] = "200 PORT command successful.";
   send(i, corResponse, sizeof(corResponse), 0);
 }
 
@@ -243,24 +245,51 @@ int initiateDataChannel() {
 }
 
 // function to send file over socket i
-void sFile(FILE *fp, int i) {
-  int n;
-  char data[SIZE] = {0};
+void sFile(char *filename, int i) {
+  FILE *fp = fopen(filename, "rb");
+  if (fp != NULL) {
+    printf("File opened.\n");
 
-  while (fgets(data, SIZE, fp) != NULL) {
-    printf("%s\n", data);
-    if (send(i, data, sizeof(data), 0) == -1) {
-      perror("[-]Error in sending file.");
+    // send file size first
+    fseek(fp, 0L, SEEK_END);
+    // calculating the size of the file
+    long int res = ftell(fp);
+    char filesizemsg[256];
+    printf("\nsz:%ld\n", res);
+    sprintf(filesizemsg, "%ld", res);
+    send(i, filesizemsg, sizeof(filesizemsg), 0);
+
+    // read dummy
+    // char dumx[256];
+    // recv(i, dumx, sizeof(dumx))
+
+  } else {
+    char errormsg[256] = "550 No such file or directory";
+    send(i, errormsg, sizeof(errormsg), 0);
+  }
+
+  char data[256];
+  bzero(data, 256);
+
+  // initially send the size of the file
+  fseek(fp, 0L, SEEK_SET);
+  while (true) {
+    int readLen = fread(data, 1, sizeof(data), fp);
+    if (readLen <= 0) {
+      break;
+    }
+    // printf("-:%s\n", data);
+    if (send(i, data, readLen, 0) == -1) {
+      perror("--Error in sending file.");
       exit(1);
     }
-    bzero(data, SIZE);
+    bzero(data, sizeof(data));
   }
 
   fclose(fp);
-  /*
-  char complete[] = "226 Transfer completed.";
+
+  char complete[256] = "226 Transfer completed.";
   send(i, complete, sizeof(complete), 0);
-  */
 }
 
 // main function
@@ -292,7 +321,7 @@ int main() {
           // accept new connection
           int newClientSock = accept(serverSocket, (struct sockaddr *)&clientAddrs, &addr_size);
           FD_SET(newClientSock, &masterSet);
-          printf("-New connection at socket: %d, ip: %s, port: %d\n", newClientSock, inet_ntoa(clientAddrs.sin_addr), ntohs(clientAddrs.sin_port));
+          printf("+New connection at socket: %d, ip: %s, port: %d\n", newClientSock, inet_ntoa(clientAddrs.sin_addr), ntohs(clientAddrs.sin_port));
           listOfConnectedClients[newClientSock].userName = false;
           listOfConnectedClients[newClientSock].userPass = false;
           strcpy(listOfConnectedClients[newClientSock].currDir, ".");
@@ -302,8 +331,9 @@ int main() {
         else {
           char buffer[256];
           bzero(buffer, sizeof(buffer));
-          int bytes = recv(i, buffer, sizeof(buffer), 0);  // receive
+          int bytes = recv(i, buffer, sizeof(buffer), 0);  // receive the first command
           printf("Message at: %d> %s\n", i, buffer);
+
           // case1: client has closed the connection
           if (bytes == 0) {
             printf("-Connection closed from client socket: %d. \n", i);
@@ -312,9 +342,9 @@ int main() {
             // reset
             listOfConnectedClients[i].userName = false;
             listOfConnectedClients[i].userPass = false;
-
           }
           // case2: received some data from client
+
           else {
             char resCmd[256];
             char resDat[256];
@@ -332,10 +362,10 @@ int main() {
 
             // CHECK if authetiated or not
             else if (!listOfConnectedClients[i].userPass || !listOfConnectedClients[i].userName) {
-              char corResponse[] = "530 not authenticated.";
+              char corResponse[256] = "530 not authenticated.";
               send(i, corResponse, sizeof(corResponse), 0);
-              memset(resCmd, 0, strlen(resCmd));
-              memset(resDat, 0, strlen(resDat));
+              memset(resCmd, 0, sizeof(resCmd));
+              memset(resDat, 0, sizeof(resDat));
             }
 
             // PORT command
@@ -361,7 +391,7 @@ int main() {
                 // connect
 
                 int connection_status = connect(newDataSock, (struct sockaddr *)&clientAddrToSendData, sizeof(clientAddrToSendData));
-                printf("--Sending data using socket: %d, to port: %d\n", newDataSock, listOfConnectedClients[i].userCurDataPort);
+                printf("+Sending data, using socket: %d, to client port: %d\n", newDataSock, listOfConnectedClients[i].userCurDataPort);
 
                 // check for errors with the connection
                 if (connection_status == -1) {
@@ -369,7 +399,7 @@ int main() {
                   exit(EXIT_FAILURE);
                 } else {
                   // Todo: maybe this response is automated
-                  char corResponse[] = "150 File status okay; about to open. data connection.";
+                  char corResponse[256] = "150 File status okay; about to open. data connection.";
                   send(newDataSock, corResponse, sizeof(corResponse), 0);
 
                   // LIST command
@@ -378,8 +408,9 @@ int main() {
 
                   // RETR command
                   else if (strcmp(resCmd, allCmds[4]) == 0) {
-                    char dum[256];
-                    recv(newDataSock, &dum, sizeof(dum), 0);
+                    // char dum[256];
+                    // recv(newDataSock, &dum, sizeof(dum), 0);
+                    // printf("%s\n", dum);
                     char filename[256];
                     int i2 = 0;
                     int j2 = 0;
@@ -398,21 +429,14 @@ int main() {
                     }
                     filename[j2] = '\0';
                     // send the file
-                    //  text file
+
                     // TODO: check
 
-                    FILE *txtile = fopen(filename, "r");
-                    if (txtile != 0) {
-                      printf("File opened.\n");
-                      sFile(txtile, newDataSock);
-                      printf("File send complete.\n");
-                    } else {
-                      char errormsg[] = "550 No such file or directory";
-                      send(newDataSock, errormsg, strlen(errormsg), 0);
-                    }
-                    // binary file
+                    sFile(filename, newDataSock);
                   }
-                  // start sending the list command
+
+                  printf("-Sending done, closing sock: %d, to client port: %d\n", newDataSock, listOfConnectedClients[i].userCurDataPort);
+
                   close(newDataSock);
                   exit(1);
                 }
@@ -421,13 +445,13 @@ int main() {
 
             // Wrong command
             else {
-              char corResponse[] = "202 Command not implemented.";
+              char corResponse[256] = "202 Command not implemented.";
               send(i, corResponse, sizeof(corResponse), 0);
             }
 
             // clear the data
-            memset(resCmd, 0, strlen(resCmd));
-            memset(resDat, 0, strlen(resDat));
+            memset(resCmd, 0, sizeof(resCmd));
+            memset(resDat, 0, sizeof(resDat));
           }
           // displaying the message received
         }
