@@ -192,7 +192,6 @@ void recvFile(int i, char *filename) {
   recv(i, buffer, sizeof(buffer), 0);
   long int fsize;
   sscanf(buffer, "%ld", &fsize);
-  printf("got:%ld\n", fsize);
 
   long int readBytesCount = 0;
 
@@ -201,23 +200,33 @@ void recvFile(int i, char *filename) {
   fp = fopen(filename, "ab");
   while (1) {
     n = recv(i, buffer, sizeof(buffer), 0);
-    printf("n:%d\n", n);
-    printf("BC:%ld\n", readBytesCount);
+
     readBytesCount += n;
-    if (readBytesCount >= fsize) {
-      int rx = 0;
-      while () {
+
+    if ((readBytesCount >= fsize) && (readBytesCount < fsize + 256)) {
+      int resIx = 0;
+      int partDat = readBytesCount - fsize;
+
+      fwrite(buffer, 1, 256 - partDat, fp);
+      char resd[256];
+      int limt = sizeof(buffer);
+
+      for (int jx = 256 - partDat; jx < limt; jx++) {
+        resd[resIx] = buffer[jx];
+        resIx++;
       }
-      printf("p2:-%s-\n ", buffer);
-    } else {
+      printf("%s", resd);
+
+    } else if (readBytesCount <= fsize) {
       fwrite(buffer, 1, n, fp);
+    } else {
+      printf("%s\n", buffer);
     }
     bzero(buffer, sizeof(buffer));
     if (n <= 0) {
       break;
     }
   }
-  printf("Done\n");
   // at the end of file send a request to server to check if file transfer completed
 
   fclose(fp);
@@ -281,7 +290,7 @@ int main() {
             bzero(buffer2, sizeof(buffer2));
             recv(client_socket, &buffer2, sizeof(buffer2), 0);  // receive
             // prints 150 file status okay
-            printf("%s\n", buffer2);
+            printf("%s", buffer2);
             // start receiving data
             bzero(buffer2, sizeof(buffer2));
 
