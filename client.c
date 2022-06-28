@@ -8,13 +8,15 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define PORT 9007
+#define PORT 21
 #define SIZE 1024
+#define BUFFERSIZE 256
 
 unsigned short controlPort;
+int newPortForData;
 bool userAuthenticated = false;
 char *thisIPaddr;  // max number of strings allowed in ip
-char curWorkingDir[256] = ".";
+char curWorkingDir[256];
 int portDatIndex = 0;
 int listOfPorts[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -131,6 +133,7 @@ void sepCmdDat(char *buff, char *cmdstr, char *datstr) {
 // function to send port command
 int sendPortCmd(int sockI) {
   char portCmd[256] = "PORT ";
+
   getNewPort();
   int newPortForData = listOfPorts[portDatIndex];
 
@@ -255,7 +258,7 @@ int main() {
       char resCmd[256];
       char resDat[256];
       sepCmdDat(buffer, resCmd, resDat);
-      char allCmds[4][5] = {"RETR", "LIST", "STOR"};
+     char allCmds[6][5] = {"RETR", "LIST", "STOR", "!PWD", "!CWD", "!LIST"};
 
       // check if any of the LIST, RETR or STOR commands are input by user
       if ((strcmp(resCmd, allCmds[0]) == 0 || strcmp(resCmd, allCmds[1]) == 0 || strcmp(resCmd, allCmds[2]) == 0) && userAuthenticated) {
@@ -333,11 +336,34 @@ int main() {
       }
 
       // for rest of the commands
-      else {
-        if (send(network_socket, buffer, sizeof(buffer), 0) < 0) {
+      else if (strcmp(resCmd, allCmds[5]) == 0)
+      {
+        system("ls");
+      }
+
+      else if (strcmp(resCmd, allCmds[3]) == 0)
+      {
+        system("pwd");
+      }
+
+      else if (strcmp(resCmd, allCmds[4]) == 0)
+      {
+        if(chdir(resDat) == -1){
+          printf("No such directory.\n");
+        } else{
+          getcwd(curWorkingDir, sizeof(curWorkingDir));
+          printf("Directory changed to pathname/foldername.\n");
+        }
+      }
+      else
+      {
+        printf("%d \n", strcmp(resCmd, allCmds[3]));
+        // for rest of the commands
+        if (send(network_socket, buffer, strlen(buffer), 0) < 0)
+        {
           perror("send");
           exit(EXIT_FAILURE);
-        } else {
+        }else {
           // get data back
           char response[256];
           bzero(response, sizeof(response));
