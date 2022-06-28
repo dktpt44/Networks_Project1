@@ -456,7 +456,7 @@ int main()
           printf("%s\n", response);
 
           // check if authentication was successful from the server
-          char passCorrect[] = "230 User logged in, proceed.\n";
+          char passCorrect[] = "230 User logged in, proceed.";
           if (strcmp(response, passCorrect) == 0)
             userAuthenticated = true;
         }
