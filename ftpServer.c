@@ -447,8 +447,6 @@ int main() {
                     printf("There was an error making a connection to the remote socket \n\n");
                     exit(EXIT_FAILURE);
                   } else {
-                    // Todo: maybe this response is automated
-
                     // LIST command
                     if (strcmp(resCmd, allCmds[3]) == 0) {
                       char corResponse[BUFFERSIZE] = "150 File status okay; about to open. data connection.";
@@ -551,7 +549,6 @@ int main() {
                 if (resDat[0] == '.') {
                   strcpy(newDir, resDat);
                 } else if (resDat[0] != '/') {  // if resDat doesn't starts with '/' this means that this input is a folder
-                  printf("r");
                   // parsing for current location
                   int e2 = 0;
                   int r2 = 0;
@@ -577,7 +574,16 @@ int main() {
                   bzero(newDir, sizeof(newDir));
                   getcwd(newDir, sizeof(newDir));
                   strcpy(listOfConnectedClients[i].currDir, newDir);
-                  strcpy(responseMsg, "200 directory changed to pathname/foldername.");
+
+                  strcpy(responseMsg, "200 directory changed to ");
+                  int indx1 = strlen(responseMsg), indx2 = 0;
+                  while (newDir[indx2] != '\0') {
+                    responseMsg[indx1] = newDir[indx2];
+                    indx1++;
+                    indx2++;
+                  }
+                  responseMsg[indx1] = '\0';
+
                   // TODO: change the folder name to actual folder name
                 }
                 send(i, responseMsg, sizeof(responseMsg), 0);
