@@ -237,7 +237,30 @@ void recvFile(int i, char *filename) {
 
 // function to send file to the server
 void sendFile(int i, char *filename) {
+  FILE *fp = fopen(filename, "rb");
+  if (fp != NULL) {
+    printf("File opened.\n");
+
+    char data[BUFFERSIZE];
+    bzero(data, BUFFERSIZE);
+    while (true) {
+      int readLen = fread(data, 1, sizeof(data), fp);
+      if (readLen <= 0) {
+        break;
+      }
+      if (send(i, data, readLen, 0) == -1) {
+        perror("--Error in sending file.");
+        exit(1);
+      }
+      bzero(data, sizeof(data));
+    }
+
+    fclose(fp);
+    printf("226 Transfer completed.\n");
+  }
 }
+
+// main function
 int main() {
   // create a socket
   int network_socket = initiateTCP();
@@ -278,11 +301,21 @@ int main() {
           char response[BUFFERSIZE];
           bzero(response, sizeof(response));
           recv(network_socket, &response, sizeof(response), 0);
-          printf("%s\n", response);
+          printf("%s\n", response);  // prints port command success
 
           // check if not authenticated, do not send the list command
           char checkRes[BUFFERSIZE] = "530 Not logged in.";
-          if (strcmp(checkRes, response) != 0) {
+          // if it is store command check if the file exists
+          bool dontRun = false;
+          if (strcmp(resCmd, allCmds[2]) == 0 && (strcmp(checkRes, response) != 0)) {
+            FILE *fp = fopen(resDat, "rb");
+            if (!fp) {
+              dontRun = true;
+              printf("550 No such file or directory.\n");
+            } else
+              fclose(fp);
+          }
+          if ((strcmp(checkRes, response) != 0) && !dontRun) {
             // send the actual command now
 
             if (send(network_socket, buffer, sizeof(buffer), 0) < 0) {
@@ -331,6 +364,8 @@ int main() {
 
               // STOR command
               else if (strcmp(resCmd, allCmds[2]) == 0) {
+                printf("Running store cmd\n");
+                sendFile(client_socket, resDat);
               }
 
               close(client_socket);

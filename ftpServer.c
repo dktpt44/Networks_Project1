@@ -268,46 +268,65 @@ void sFile(char *filename, int i) {
     // calculating the size of the file
     long int res = ftell(fp);
     char filesizemsg[BUFFERSIZE];
-    printf("\nsz:%ld\n", res);
     sprintf(filesizemsg, "%ld", res);
     send(i, filesizemsg, sizeof(filesizemsg), 0);
 
-    // read dummy
-    // char dumx[256];
-    // recv(i, dumx, sizeof(dumx))
+    char data[BUFFERSIZE];
+    bzero(data, BUFFERSIZE);
+
+    // move pointer to top of the file
+    fseek(fp, 0L, SEEK_SET);
+    while (true) {
+      int readLen = fread(data, 1, sizeof(data), fp);
+      if (readLen <= 0) {
+        break;
+      }
+      // printf("-:%s\n", data);
+      if (send(i, data, readLen, 0) == -1) {
+        perror("--Error in sending file.");
+        exit(1);
+      }
+      bzero(data, sizeof(data));
+    }
+
+    fclose(fp);
+
+    char complete[BUFFERSIZE] = "226 Transfer completed.";
+    send(i, complete, sizeof(complete), 0);
   } else {
     printf("File does not exist.\n");
 
     char errormsg[BUFFERSIZE] = "550 No such file or directory";
     send(i, errormsg, sizeof(errormsg), 0);
   }
+}
 
-  char data[BUFFERSIZE];
-  bzero(data, BUFFERSIZE);
+// function to receive file from the client
+void recvFile(char *filename, int i) {
+  int n;
+  char buffer[BUFFERSIZE];
 
-  // initially send the size of the file
-  fseek(fp, 0L, SEEK_SET);
-  while (true) {
-    int readLen = fread(data, 1, sizeof(data), fp);
-    if (readLen <= 0) {
+  bzero(buffer, sizeof(buffer));
+
+  FILE *fp;
+  fp = fopen(filename, "ab");
+  while (1) {
+    n = recv(i, buffer, sizeof(buffer), 0);
+    fwrite(buffer, 1, n, fp);
+    bzero(buffer, sizeof(buffer));
+    if (n <= 0) {
       break;
     }
-    // printf("-:%s\n", data);
-    if (send(i, data, readLen, 0) == -1) {
-      perror("--Error in sending file.");
-      exit(1);
-    }
-    bzero(data, sizeof(data));
   }
 
-  fclose(fp);
+  printf("Transfer completed.\n");
 
-  char complete[BUFFERSIZE] = "226 Transfer completed.";
-  send(i, complete, sizeof(complete), 0);
+  fclose(fp);
+  return;
 }
 
 // function to check if bad sequence of command
-bool checkIfBadSeq(char *resDat, char listOFcmd[8][5], int noSiz) {
+bool checkIfBadSeq(char *resDat, char listOFcmd[8][6], int noSiz) {
   for (int cx = 0; cx < noSiz; cx++) {
     if (strcmp(listOFcmd[cx], resDat) == 0)
       return true;
@@ -375,7 +394,7 @@ int main() {
             char resDat[256];
             sepCmdDat(buffer, resCmd, resDat);
 
-            char allCmds[8][5] = {"USER", "PASS", "PORT", "LIST", "RETR", "STOR", "PWD", "CWD"};
+            char allCmds[8][6] = {"USER", "PASS", "PORT", "LIST", "RETR", "STOR", "PWD", "CWD"};
             chdir(listOfConnectedClients[i].currDir);
             // USER command
             if (strcmp(resCmd, allCmds[0]) == 0)
@@ -392,7 +411,7 @@ int main() {
             }
 
             // LIST, RETR, STOR = fork a new process
-            else if ((strcmp(resCmd, allCmds[3]) == 0 || strcmp(resCmd, allCmds[4]) == 0)) {
+            else if ((strcmp(resCmd, allCmds[3]) == 0) || (strcmp(resCmd, allCmds[4]) == 0) || (strcmp(resCmd, allCmds[5]) == 0)) {
               if (isAuthenticated(i)) {
                 int pid = fork();
                 // child process
@@ -428,12 +447,10 @@ int main() {
 
                     // RETR command
                     else if (strcmp(resCmd, allCmds[4]) == 0) {
-                      // char dum[256];
-                      // recv(newDataSock, &dum, sizeof(dum), 0);
-                      // printf("%s\n", dum);
                       char filename[256];
                       int i2 = 0;
                       int j2 = 0;
+                      // parsing current location
                       while (listOfConnectedClients[i].currDir[i2] != '\0') {
                         filename[j2] = listOfConnectedClients[i].currDir[i2];
                         i2++;
@@ -448,14 +465,41 @@ int main() {
                         j2++;
                       }
                       filename[j2] = '\0';
-                      // send the file
 
                       // TODO: check
 
+                      // send the file
                       sFile(filename, newDataSock);
+                      printf("-Sending done, closing sock: %d, to client port: %d\n", newDataSock, listOfConnectedClients[i].userCurDataPort);
+
                     }
 
-                    printf("-Sending done, closing sock: %d, to client port: %d\n", newDataSock, listOfConnectedClients[i].userCurDataPort);
+                    // STOR command
+                    else if (strcmp(resCmd, allCmds[5]) == 0) {
+                      char corResponse[BUFFERSIZE] = "160 Waiting for file.";
+                      send(newDataSock, corResponse, sizeof(corResponse), 0);
+
+                      char filename[256];
+                      int i2 = 0;
+                      int j2 = 0;
+                      // parsing current location
+                      while (listOfConnectedClients[i].currDir[i2] != '\0') {
+                        filename[j2] = listOfConnectedClients[i].currDir[i2];
+                        i2++;
+                        j2++;
+                      }
+                      filename[j2] = '/';
+                      j2++;
+                      i2 = 0;
+                      while (resDat[i2] != '\0') {
+                        filename[j2] = resDat[i2];
+                        i2++;
+                        j2++;
+                      }
+                      filename[j2] = '\0';
+
+                      recvFile(filename, newDataSock);
+                    }
 
                     close(newDataSock);
                     exit(1);
