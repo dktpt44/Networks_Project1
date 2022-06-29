@@ -8,7 +8,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define PORT 9020
+#define PORT 21
 #define SIZE 1024
 #define BUFFERSIZE 256
 
@@ -79,7 +79,6 @@ int iniDataConnection() {
     printf("socket creation failed..\n");
     exit(EXIT_FAILURE);
   }
-  int value = 1;
   if (setsockopt(newSocket, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0) {
     perror("binding failed! \n");
   }
@@ -364,7 +363,6 @@ int main() {
 
               // STOR command
               else if (strcmp(resCmd, allCmds[2]) == 0) {
-                printf("Running store cmd\n");
                 sendFile(client_socket, resDat);
               }
 

@@ -10,7 +10,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#define PORT 9020
+#define PORT 21
+#define DATAPORT 20
 #define USERMAX 1024
 #define SIZE 1024
 #define BUFFERSIZE 256
@@ -51,6 +52,11 @@ bool isAuthenticated(int i) {
 // function to read users from file
 void loadUserFile() {
   FILE *userFile = fopen("user.txt", "r");
+  if (!userFile) {
+    userCount = 0;
+    printf("User.txt file not found. \n");
+    return;
+  }
   int strCount = 0;
   char str = ' ';
   // get the number of users
@@ -246,10 +252,9 @@ int initiateDataChannel() {
   // bind it to port 20
   bzero(&thisMachineAddr, sizeof(thisMachineAddr));
   thisMachineAddr.sin_family = AF_INET;
-  thisMachineAddr.sin_port = htons(20);
+  thisMachineAddr.sin_port = htons(DATAPORT);
   thisMachineAddr.sin_addr.s_addr = INADDR_ANY;  // TODO:
   if (bind(newDataSock, (struct sockaddr *)&thisMachineAddr, sizeof(struct sockaddr_in)) == 0) {
-    printf("binded \n");
   }
   return newDataSock;
 }
@@ -360,12 +365,10 @@ int main() {
       if (FD_ISSET(i, &copySet)) {
         // 1st case: NEW CONNECTION
         if (i == serverSocket) {
-          struct sockaddr_in clientAddrs;
-          socklen_t addr_size;
           // accept new connection
-          int newClientSock = accept(serverSocket, (struct sockaddr *)&clientAddrs, &addr_size);
+          int newClientSock = accept(serverSocket, 0, 0);
           FD_SET(newClientSock, &masterSet);
-          printf("+New connection at socket: %d, ip: %s, port: %d\n", newClientSock, inet_ntoa(clientAddrs.sin_addr), ntohs(clientAddrs.sin_port));
+          printf("+New connection at socket: %d\n", newClientSock);
           listOfConnectedClients[newClientSock].userName = false;
           listOfConnectedClients[newClientSock].userPass = false;
           strcpy(listOfConnectedClients[newClientSock].currDir, initDir);

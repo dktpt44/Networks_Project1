@@ -1,6 +1,6 @@
 
 CC = gcc
-CLAGS = -Wall -g
+CFLAGS = -Wall -g
 # ****************************************************
 
 all: server client
