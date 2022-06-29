@@ -12,15 +12,16 @@
 #define SIZE 1024
 #define BUFFERSIZE 256
 
-unsigned short controlPort;
-int newPortForData;
-char *thisIPaddr;  // max number of strings allowed in ip
-char curWorkingDir[256];
-int portDatIndex = 0;
+unsigned short controlPort;  // randomly assigned control port
+int newPortForData;          // port for data transfer
+char *thisIPaddr;            // max number of strings allowed in ip
+char curWorkingDir[256];     // holds the current working directory information
+int portDatIndex = 0;        // index for the current data transfer port
 int listOfPorts[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 // function to get new port
 void getNewPort() {
+  // get port+n
   portDatIndex++;
   portDatIndex %= 10;
 
@@ -32,6 +33,7 @@ void getNewPort() {
 
 // function to initiate initial TCP connection
 int initiateTCP() {
+  // create a new socket = master socket for control port
   int network_socket = socket(AF_INET, SOCK_STREAM, 0);
   if (network_socket == -1) {  // check for fail error
     printf("Socket creation failed..\n");
@@ -42,14 +44,11 @@ int initiateTCP() {
   setsockopt(network_socket, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
 
   // save the ip address in the global variable to send it to the port command
-
   struct sockaddr_in servAddr;
   bzero(&servAddr, sizeof(servAddr));
   servAddr.sin_family = AF_INET;
   servAddr.sin_port = htons(PORT);
   servAddr.sin_addr.s_addr = INADDR_ANY;
-
-  // printing the current ip and port
 
   // connect
   if (connect(network_socket, (struct sockaddr *)&servAddr, sizeof(servAddr)) < 0) {
@@ -59,20 +58,22 @@ int initiateTCP() {
     printf("220 Service ready for new user.\n");
   }
 
-  /* for client address */
+  // getting this client's information
   struct sockaddr_in clientAddr;
   socklen_t clientSocketSz = sizeof(clientAddr);
   getsockname(network_socket, (struct sockaddr *)&clientAddr, &clientSocketSz);
   // getting client port number
   controlPort = ntohs(clientAddr.sin_port);
+  // getting client ip address
   thisIPaddr = inet_ntoa(clientAddr.sin_addr);
-  printf("Client is connecting through port %d, ip:(%s)\n", controlPort, thisIPaddr);
+  // printf("Client is connecting through port %d, ip:(%s)\n", controlPort, thisIPaddr);
 
   return network_socket;
 }
 
 // function to initiate data connection
 int iniDataConnection() {
+  // create new socket
   int newSocket = socket(AF_INET, SOCK_STREAM, 0);
   // check for fail error
   if (newSocket == -1) {
@@ -120,8 +121,10 @@ void sepCmdDat(char *buff, char *cmdstr, char *datstr) {
     } else {
       // data string (if any)
       if (variableCount == 1) {
+        // add to command string
         cmdstr[strindx] = buff[j];
       } else if (variableCount == 2) {
+        // add to command data string
         datstr[strindx] = buff[j];
       }
       strindx++;
@@ -132,7 +135,7 @@ void sepCmdDat(char *buff, char *cmdstr, char *datstr) {
 // function to send port command
 int sendPortCmd(int sockI) {
   char portCmd[256] = "PORT ";
-
+  // get the new port
   getNewPort();
   int newPortForData = listOfPorts[portDatIndex];
 
@@ -157,6 +160,7 @@ int sendPortCmd(int sockI) {
 
   char p1c[256];
   char p2c[256];
+  // convert to string
   sprintf(p1c, "%d", p1);
   sprintf(p2c, "%d", p2);
 
@@ -188,13 +192,12 @@ void recvFile(int i, char *filename) {
   printf("\n");
   int n;
   char buffer[BUFFERSIZE];
-
   bzero(buffer, sizeof(buffer));
   // receive file size
   recv(i, buffer, sizeof(buffer), 0);
   long int fsize;
+  // convert to long int
   sscanf(buffer, "%ld", &fsize);
-
   long int readBytesCount = 0;
 
   FILE *fp;
@@ -204,21 +207,20 @@ void recvFile(int i, char *filename) {
     n = recv(i, buffer, sizeof(buffer), 0);
 
     readBytesCount += n;
-
     if ((readBytesCount >= fsize) && (readBytesCount < fsize + BUFFERSIZE)) {
+      // it means buffer contains some file data and other 226 Transfer complete status. Extracting them
       int resIx = 0;
       int partDat = readBytesCount - fsize;
-
       fwrite(buffer, 1, BUFFERSIZE - partDat, fp);
       char resd[BUFFERSIZE];
       int limt = sizeof(buffer);
-
       for (int jx = BUFFERSIZE - partDat; jx < limt; jx++) {
         resd[resIx] = buffer[jx];
         resIx++;
       }
       printf("%s", resd);
     } else if (readBytesCount <= fsize) {
+      // write to file in this case
       fwrite(buffer, 1, n, fp);
     } else {
       printf("%s\n", buffer);
@@ -228,7 +230,6 @@ void recvFile(int i, char *filename) {
       break;
     }
   }
-  // at the end of file send a request to server to check if file transfer completed
 
   fclose(fp);
   return;
@@ -242,18 +243,20 @@ void sendFile(int i, char *filename) {
 
     char data[BUFFERSIZE];
     bzero(data, BUFFERSIZE);
+    // read file data
     while (true) {
       int readLen = fread(data, 1, sizeof(data), fp);
       if (readLen <= 0) {
         break;
       }
+      // send through the socket
       if (send(i, data, readLen, 0) == -1) {
         perror("--Error in sending file.");
         exit(1);
       }
       bzero(data, sizeof(data));
     }
-
+    // close file
     fclose(fp);
     printf("226 Transfer completed.\n");
   }
@@ -353,7 +356,7 @@ int main() {
               // LIST command
               else if (strcmp(resCmd, allCmds[1]) == 0) {
                 int endWhile = 1;
-
+                // loop until we get data
                 while (endWhile != 0) {
                   endWhile = recv(client_socket, &buffer2, sizeof(buffer2), 0);
                   printf("%s\n", buffer2);
